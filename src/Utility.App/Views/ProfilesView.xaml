@@ -1,0 +1,73 @@
+<UserControl x:Class="Utility.App.Views.ProfilesView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Utility.App.Localization">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="0,0,8,0">
+            <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{loc:Tr NavProfiles}" />
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                        <TextBlock Style="{StaticResource MutedLabelStyle}" Text="{loc:Tr LblThermalMode}" />
+                        <TextBlock FontSize="15" FontWeight="SemiBold" Text="{Binding LiveThermalModeText}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                        <TextBlock Style="{StaticResource MutedLabelStyle}" Text="{loc:Tr LblWindowsPowerMode}" />
+                        <TextBlock FontSize="15" FontWeight="SemiBold" Text="{Binding LiveWindowsPowerModeText}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Style="{StaticResource MutedLabelStyle}" Text="{loc:Tr LblAcState}" />
+                        <TextBlock FontSize="15" FontWeight="SemiBold" Text="{Binding LiveAcStateText}" Margin="0,4,0,0" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                        <Button Content="{loc:Tr ProfileDailyName}" Command="{Binding SelectProfileCommand}" CommandParameter="daily" Margin="0,0,8,0" />
+                        <Button Content="{loc:Tr ProfileGamingName}" Command="{Binding SelectProfileCommand}" CommandParameter="gaming" Margin="0,0,16,0" />
+                        <TextBlock VerticalAlignment="Center" Style="{StaticResource MutedLabelStyle}" Text="{Binding SelectedProfileId}" />
+                    </StackPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <TextBlock VerticalAlignment="Center" Style="{StaticResource MutedLabelStyle}" Text="{loc:Tr LblStockFallbacks}" Margin="0,0,8,0" />
+                        <Button Content="{loc:Tr BtnQuiet}" Command="{Binding SetStockThermalModeCommand}" CommandParameter="Quiet" Margin="0,0,6,0" />
+                        <Button Content="{loc:Tr BtnBalanced}" Command="{Binding SetStockThermalModeCommand}" CommandParameter="Balanced" Margin="0,0,6,0" />
+                        <Button Content="{loc:Tr BtnPerformance}" Command="{Binding SetStockThermalModeCommand}" CommandParameter="Performance" Margin="0,0,10,0" />
+                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="{loc:Tr BtnRefreshElevated}" Command="{Binding RefreshLiveThermalCommand}" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel>
+                    <DataGrid ItemsSource="{Binding ProfileFields}" IsReadOnly="False" CanUserAddRows="False" MaxHeight="380">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="{loc:Tr ColField}" Binding="{Binding DisplayLabel}" IsReadOnly="True" Width="2.2*" />
+                            <DataGridTextColumn Header="{loc:Tr ColDraftValue}" Binding="{Binding DraftText, UpdateSourceTrigger=PropertyChanged}" Width="*" />
+                            <DataGridTextColumn Header="{loc:Tr ColReferenceValue}" Binding="{Binding ReferenceValue}" IsReadOnly="True" Width="0.9*" />
+                            <DataGridTextColumn Header="{loc:Tr ColLiveValue}" Binding="{Binding LiveReadBackText}" IsReadOnly="True" Width="0.9*" />
+                            <DataGridTextColumn Header="{loc:Tr ColUnit}" Binding="{Binding Unit}" IsReadOnly="True" Width="0.6*" />
+                            <DataGridTextColumn Header="{loc:Tr ColVerified}" Binding="{Binding ContractStatusText}" IsReadOnly="True" Width="1.5*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <TextBlock Margin="0,10,0,10" Foreground="{StaticResource WarningBrush}" Text="{Binding ProfileBlockingNote}" TextWrapping="Wrap" />
+
+                    <WrapPanel>
+                        <Button Content="{loc:Tr BtnSaveDraft}" Command="{Binding SaveProfileDraftCommand}" Margin="0,0,8,6" />
+                        <Button Content="{loc:Tr BtnResetReference}" Command="{Binding ResetProfileToReferenceCommand}" Margin="0,0,8,6" />
+                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="{loc:Tr BtnApplyFullProfile}" Command="{Binding ApplyFullProfileCommand}" Margin="0,0,8,6" />
+                        <Button Content="{loc:Tr BtnApplyPowerOnly}" Command="{Binding ApplyPowerFieldsOnlyCommand}" Margin="0,0,8,6" />
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

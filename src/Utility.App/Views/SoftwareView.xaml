@@ -1,0 +1,69 @@
+<UserControl x:Class="Utility.App.Views.SoftwareView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Utility.App.Localization">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Style="{StaticResource SectionTitleStyle}" Text="{loc:Tr SoftwareHeader}" />
+        <TextBlock Grid.Row="1" Style="{StaticResource MutedLabelStyle}" Text="{Binding SoftwareSummaryText}" Margin="0,0,0,10" />
+
+        <TabControl Grid.Row="2" Background="Transparent" BorderThickness="0">
+            <TabItem Header="{loc:Tr TabInstalledApps}">
+                <DockPanel Margin="0,8,0,0">
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <TextBlock VerticalAlignment="Center" Style="{StaticResource MutedLabelStyle}" Text="{loc:Tr LblSearch}" Margin="0,0,8,0" />
+                        <TextBox Width="260" Text="{Binding AppSearchText, UpdateSourceTrigger=PropertyChanged}" DockPanel.Dock="Left" />
+                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="{loc:Tr BtnOpenWindowsApps}" Command="{Binding OpenWindowsAppsCommand}" HorizontalAlignment="Right" />
+                    </DockPanel>
+                    <DataGrid ItemsSource="{Binding FilteredApps}" SelectedItem="{Binding SelectedInstalledApp}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Name" Binding="{Binding DisplayName}" Width="2*" />
+                            <DataGridTextColumn Header="Publisher" Binding="{Binding Publisher}" Width="1.4*" />
+                            <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="0.8*" />
+                            <DataGridTextColumn Header="Scope" Binding="{Binding Scope}" Width="0.8*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </TabItem>
+
+            <TabItem Header="{loc:Tr TabStartupEntries}">
+                <DockPanel Margin="0,8,0,0">
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="{loc:Tr BtnOpenWindowsStartup}" Command="{Binding OpenWindowsStartupCommand}" />
+                    </StackPanel>
+                    <DataGrid ItemsSource="{Binding StartupEntries}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="1.3*" />
+                            <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="*" />
+                            <DataGridTextColumn Header="Enabled" Binding="{Binding IsEnabled}" Width="0.6*" />
+                            <DataGridTextColumn Header="Target" Binding="{Binding CommandOrTarget}" Width="2.4*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </TabItem>
+
+            <TabItem Header="{loc:Tr TabLenovoLeftovers}">
+                <DockPanel Margin="0,8,0,0">
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="{loc:Tr BtnScanLeftovers}" Command="{Binding RunLeftoverScanCommand}" />
+                    </StackPanel>
+                    <DataGrid ItemsSource="{Binding LeftoverFindings}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Classification" Binding="{Binding Classification}" Width="1.1*" />
+                            <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" />
+                            <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="0.8*" />
+                            <DataGridTextColumn Header="State" Binding="{Binding CurrentState}" Width="*" />
+                            <DataGridCheckBoxColumn Header="Main App Present" Binding="{Binding IsMainAppInstalled}" Width="0.7*" />
+                            <DataGridTextColumn Header="Evidence" Binding="{Binding Evidence}" Width="2.2*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</UserControl>

@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="AppTitle" xml:space="preserve"><value>Utility</value></data>
+  <data name="AppSubtitle" xml:space="preserve"><value>Lenovo Legion Y7000 IRX9 (83JJ)</value></data>
+  <data name="NavProfiles" xml:space="preserve"><value>性能配置</value></data>
+  <data name="NavBattery" xml:space="preserve"><value>电池养护</value></data>
+  <data name="NavTelemetry" xml:space="preserve"><value>硬件监控</value></data>
+  <data name="NavGraphics" xml:space="preserve"><value>显卡模式</value></data>
+  <data name="NavSoftware" xml:space="preserve"><value>软件与启动项</value></data>
+  <data name="NavFanCurves" xml:space="preserve"><value>自定义风扇曲线</value></data>
+  <data name="NavDrivers" xml:space="preserve"><value>官方驱动</value></data>
+  <data name="NavCapabilities" xml:space="preserve"><value>能力诊断与报告</value></data>
+  <data name="StatusStandardUser" xml:space="preserve"><value>标准用户模式</value></data>
+  <data name="StatusElevated" xml:space="preserve"><value>管理员权限</value></data>
+  <data name="RecoveryBannerTitle" xml:space="preserve"><value>检测到未完成的硬件写入记录</value></data>
+  <data name="BtnDismiss" xml:space="preserve"><value>确认并清除提示</value></data>
+  <data name="BtnRefresh" xml:space="preserve"><value>刷新状态</value></data>
+  <data name="BtnRefreshElevated" xml:space="preserve"><value>提权读取硬件状态</value></data>
+  <data name="BtnSaveDraft" xml:space="preserve"><value>保存草稿</value></data>
+  <data name="BtnResetReference" xml:space="preserve"><value>恢复基线参考值</value></data>
+  <data name="BtnApplyFullProfile" xml:space="preserve"><value>应用完整配置</value></data>
+  <data name="BtnApplyPowerOnly" xml:space="preserve"><value>仅应用已验证功耗项（保留当前风扇策略）</value></data>
+  <data name="LblLiveVerifiedState" xml:space="preserve"><value>已验证的实时硬件状态</value></data>
+  <data name="LblSelectedProfile" xml:space="preserve"><value>当前选中的可编辑配置</value></data>
+  <data name="LblThermalMode" xml:space="preserve"><value>联想散热模式</value></data>
+  <data name="LblWindowsPowerMode" xml:space="preserve"><value>Windows 电源模式</value></data>
+  <data name="LblAcState" xml:space="preserve"><value>供电状态</value></data>
+  <data name="LblStockFallbacks" xml:space="preserve"><value>原厂预设模式切换</value></data>
+  <data name="BtnQuiet" xml:space="preserve"><value>安静</value></data>
+  <data name="BtnBalanced" xml:space="preserve"><value>均衡</value></data>
+  <data name="BtnPerformance" xml:space="preserve"><value>野兽</value></data>
+  <data name="ColField" xml:space="preserve"><value>参数项</value></data>
+  <data name="ColDraftValue" xml:space="preserve"><value>草稿值</value></data>
+  <data name="ColReferenceValue" xml:space="preserve"><value>基线参考</value></data>
+  <data name="ColLiveValue" xml:space="preserve"><value>实时回读</value></data>
+  <data name="ColUnit" xml:space="preserve"><value>单位</value></data>
+  <data name="ColVerified" xml:space="preserve"><value>映射验证状态</value></data>
+  <data name="BatteryHeader" xml:space="preserve"><value>电池状态与联想养护模式</value></data>
+  <data name="LblChargePercent" xml:space="preserve"><value>当前电量</value></data>
+  <data name="LblBatteryHealth" xml:space="preserve"><value>电池健康度</value></data>
+  <data name="LblDesignCapacity" xml:space="preserve"><value>设计容量</value></data>
+  <data name="LblFullCapacity" xml:space="preserve"><value>满充容量</value></data>
+  <data name="LblCycleCount" xml:space="preserve"><value>循环次数</value></data>
+  <data name="LblConservationMode" xml:space="preserve"><value>电池养护模式</value></data>
+  <data name="BtnToggleConservation" xml:space="preserve"><value>切换养护模式</value></data>
+  <data name="TelemetryHeader" xml:space="preserve"><value>实时硬件监控</value></data>
+  <data name="ChkPauseGpuOnBattery" xml:space="preserve"><value>电池供电时暂停自动轮询独显（避免唤醒独显）</value></data>
+  <data name="BtnManualGpuRefresh" xml:space="preserve"><value>手动刷新（含独显）</value></data>
+  <data name="LblCpuUsage" xml:space="preserve"><value>CPU 使用率</value></data>
+  <data name="LblCpuTemp" xml:space="preserve"><value>CPU 封装温度</value></data>
+  <data name="LblMemoryUsage" xml:space="preserve"><value>内存占用</value></data>
+  <data name="LblDiskActivity" xml:space="preserve"><value>磁盘活动度</value></data>
+  <data name="LblDiskCapacity" xml:space="preserve"><value>磁盘容量</value></data>
+  <data name="LblGpuTelemetry" xml:space="preserve"><value>NVIDIA RTX 独立显卡</value></data>
+  <data name="LblFanRpm" xml:space="preserve"><value>风扇转速 (RPM)</value></data>
+  <data name="GraphicsHeader" xml:space="preserve"><value>联想显卡切换模式</value></data>
+  <data name="ChkConfirmGraphicsRecovery" xml:space="preserve"><value>我已确认本机具备可用的恢复路径（例如 BIOS 或核显显示恢复），再请求切换显卡模式</value></data>
+  <data name="BtnApplyGraphicsMode" xml:space="preserve"><value>提交显卡模式切换</value></data>
+  <data name="SoftwareHeader" xml:space="preserve"><value>软件管理、启动项与联想残留只读扫描</value></data>
+  <data name="TabInstalledApps" xml:space="preserve"><value>已安装软件</value></data>
+  <data name="TabStartupEntries" xml:space="preserve"><value>开机启动项</value></data>
+  <data name="TabLenovoLeftovers" xml:space="preserve"><value>联想残留只读扫描</value></data>
+  <data name="BtnOpenWindowsApps" xml:space="preserve"><value>在 Windows 已安装应用中打开</value></data>
+  <data name="BtnOpenWindowsStartup" xml:space="preserve"><value>打开 Windows 启动应用设置</value></data>
+  <data name="BtnScanLeftovers" xml:space="preserve"><value>执行只读残留扫描</value></data>
+  <data name="FanHeader" xml:space="preserve"><value>自定义风扇曲线</value></data>
+  <data name="BtnReadFanTable" xml:space="preserve"><value>提权读取固件风扇表</value></data>
+  <data name="BtnApplyFanCurve" xml:space="preserve"><value>应用风扇曲线</value></data>
+  <data name="BtnRestoreFanDefault" xml:space="preserve"><value>恢复固件默认风扇策略</value></data>
+  <data name="DriversHeader" xml:space="preserve"><value>官方硬件驱动与安装包校验</value></data>
+  <data name="BtnLenovoDrivers" xml:space="preserve"><value>联想 83JJ 官方驱动页</value></data>
+  <data name="BtnNvidiaDrivers" xml:space="preserve"><value>NVIDIA 官方驱动页</value></data>
+  <data name="BtnWindowsUpdate" xml:space="preserve"><value>Windows 更新</value></data>
+  <data name="BtnOptionalUpdates" xml:space="preserve"><value>Windows 可选更新（驱动）</value></data>
+  <data name="BtnBrowseDriverExe" xml:space="preserve"><value>校验本地官方驱动安装包 (.exe)</value></data>
+  <data name="ChkConfirmDriverLaunch" xml:space="preserve"><value>我已核对设备型号、版本号与官方发布者，确认启动交互式官方安装程序</value></data>
+  <data name="BtnLaunchDriverExe" xml:space="preserve"><value>启动已校验的官方安装程序</value></data>
+  <data name="CapabilitiesHeader" xml:space="preserve"><value>硬件能力探测与诊断报告</value></data>
+  <data name="BtnRunElevatedProbe" xml:space="preserve"><value>提权探测联想 WMI 能力</value></data>
+  <data name="BtnExportReport" xml:space="preserve"><value>导出能力诊断报告 (JSON)</value></data>
+  <data name="LblSearch" xml:space="preserve"><value>筛选：</value></data>
+  <data name="LblCategory" xml:space="preserve"><value>分类：</value></data>
+  <data name="LblUnavailable" xml:space="preserve"><value>不可用</value></data>
+  <data name="FieldCpuLongTermPowerLimitW" xml:space="preserve"><value>CPU 长时睿频功耗限制 (PL1)</value></data>
+  <data name="FieldCpuCrossLoadingPowerLimitW" xml:space="preserve"><value>CPU 交叉负载长时功耗限制</value></data>
+  <data name="FieldCpuLongTermPowerLimitTau" xml:space="preserve"><value>CPU 长时睿频时间窗口 (Tau)</value></data>
+  <data name="FieldCpuShortTermPowerLimitW" xml:space="preserve"><value>CPU 短时睿频功耗限制 (PL2)</value></data>
+  <data name="FieldCpuThermalControlCircuitC" xml:space="preserve"><value>CPU 温度墙 (TCC)</value></data>
+  <data name="FieldGpuDynamicBoostW" xml:space="preserve"><value>GPU 动态加速功耗 (Dynamic Boost)</value></data>
+  <data name="FieldGpuToCpuDynamicBoostW" xml:space="preserve"><value>GPU 至 CPU 动态功耗分配</value></data>
+  <data name="FieldGpuConfigurableTgpW" xml:space="preserve"><value>GPU 可配置功耗 (cTGP)</value></data>
+  <data name="FieldGpuTargetTemperatureLimitC" xml:space="preserve"><value>GPU 目标温度上限</value></data>
+  <data name="FieldTotalProcessorPowerTargetAcW" xml:space="preserve"><value>交流电源下整机处理器功耗目标</value></data>
+  <data name="ProfileDailyName" xml:space="preserve"><value>日常 (Daily)</value></data>
+  <data name="ProfileGamingName" xml:space="preserve"><value>游戏 (Gaming)</value></data>
+  <data name="MsgPendingFanCapture" xml:space="preserve"><value>待捕获：尚未从 Legion Zone 捕获日常/游戏自定义风扇曲线，完整配置应用已禁用。</value></data>
+  <data name="MsgAcOnline" xml:space="preserve"><value>交流电源已连接</value></data>
+  <data name="MsgOnBattery" xml:space="preserve"><value>电池供电中</value></data>
+  <data name="MsgVerifiedOnTarget" xml:space="preserve"><value>已验证映射</value></data>
+  <data name="MsgPendingProbe" xml:space="preserve"><value>待提权验证 WMI 边界</value></data>
+  <data name="MsgFanAddPoint" xml:space="preserve"><value>添加曲线点</value></data>
+  <data name="MsgBrowseFile" xml:space="preserve"><value>选择本地安装包...</value></data>
+  <data name="MsgConservationOn" xml:space="preserve"><value>养护模式已开启</value></data>
+  <data name="MsgConservationOff" xml:space="preserve"><value>常规充电（养护关闭）</value></data>
+  <data name="MsgRapidCharge" xml:space="preserve"><value>快充模式</value></data>
+  <data name="MsgPausedOnBattery" xml:space="preserve"><value>电池下已暂停轮询</value></data>
+  <data name="MsgRebootRequiredBanner" xml:space="preserve"><value>已提交显卡模式切换请求，请由用户自行重启 Windows 后复核生效模式。</value></data>
+  <data name="MsgRecoveredLastGood" xml:space="preserve"><value>主配置文件损坏，已自动从最近一次完好备份恢复。</value></data>
+</root>

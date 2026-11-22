@@ -1,0 +1,64 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>Utility</AssemblyName>
+    <RootNamespace>Utility.App</RootNamespace>
+    <Product>Utility</Product>
+    <Title>Utility</Title>
+    <FileDescription>Utility</FileDescription>
+    <Company>Utility</Company>
+    <Version>0.1.0</Version>
+    <NeutralLanguage>en</NeutralLanguage>
+    <ApplicationIcon>..\..\assets\Utility.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="..\..\assets\Utility.ico" Link="Assets\Utility.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Utility.Core\Utility.Core.csproj" />
+    <ProjectReference Include="..\Utility.Platform\Utility.Platform.csproj" />
+    <ProjectReference Include="..\Utility.ElevatedWorker\Utility.ElevatedWorker.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+  </ItemGroup>
+
+  <Target Name="CopyElevatedWorkerAfterBuild" AfterTargets="Build">
+    <PropertyGroup>
+      <_WorkerBaseDir>..\Utility.ElevatedWorker\bin\$(Configuration)\$(TargetFramework)\</_WorkerBaseDir>
+      <_WorkerRidDir>$(_WorkerBaseDir)$(RuntimeIdentifier)\</_WorkerRidDir>
+      <_WorkerOutDir Condition="'$(RuntimeIdentifier)' != '' and Exists('$(_WorkerRidDir)Utility.ElevatedWorker.exe')">$(_WorkerRidDir)</_WorkerOutDir>
+      <_WorkerOutDir Condition="'$(_WorkerOutDir)' == ''">$(_WorkerBaseDir)</_WorkerOutDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_WorkerBuildFiles Include="$(_WorkerOutDir)Utility.ElevatedWorker.exe" />
+      <_WorkerBuildFiles Include="$(_WorkerOutDir)Utility.ElevatedWorker.dll" />
+      <_WorkerBuildFiles Include="$(_WorkerOutDir)Utility.ElevatedWorker.deps.json" />
+      <_WorkerBuildFiles Include="$(_WorkerOutDir)Utility.ElevatedWorker.runtimeconfig.json" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_WorkerBuildFiles)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" Condition="Exists('$(_WorkerOutDir)Utility.ElevatedWorker.exe')" />
+  </Target>
+
+  <Target Name="CopyElevatedWorkerAfterPublish" AfterTargets="Publish">
+    <PropertyGroup>
+      <_WorkerBaseDir>..\Utility.ElevatedWorker\bin\$(Configuration)\$(TargetFramework)\</_WorkerBaseDir>
+      <_WorkerRidDir>$(_WorkerBaseDir)$(RuntimeIdentifier)\</_WorkerRidDir>
+      <_WorkerOutDir Condition="'$(RuntimeIdentifier)' != '' and Exists('$(_WorkerRidDir)Utility.ElevatedWorker.exe')">$(_WorkerRidDir)</_WorkerOutDir>
+      <_WorkerOutDir Condition="'$(_WorkerOutDir)' == ''">$(_WorkerBaseDir)</_WorkerOutDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_WorkerPublishFiles Include="$(_WorkerOutDir)Utility.ElevatedWorker.exe" />
+      <_WorkerPublishFiles Include="$(_WorkerOutDir)Utility.ElevatedWorker.dll" />
+      <_WorkerPublishFiles Include="$(_WorkerOutDir)Utility.ElevatedWorker.deps.json" />
+      <_WorkerPublishFiles Include="$(_WorkerOutDir)Utility.ElevatedWorker.runtimeconfig.json" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_WorkerPublishFiles)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="Exists('$(_WorkerOutDir)Utility.ElevatedWorker.exe')" />
+  </Target>
+</Project>

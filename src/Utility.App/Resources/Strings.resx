@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="AppTitle" xml:space="preserve"><value>Utility</value></data>
+  <data name="AppSubtitle" xml:space="preserve"><value>Lenovo Legion Y7000 IRX9 (83JJ)</value></data>
+  <data name="NavProfiles" xml:space="preserve"><value>Performance Profiles</value></data>
+  <data name="NavBattery" xml:space="preserve"><value>Battery Conservation</value></data>
+  <data name="NavTelemetry" xml:space="preserve"><value>Hardware Monitor</value></data>
+  <data name="NavGraphics" xml:space="preserve"><value>Graphics Mode</value></data>
+  <data name="NavSoftware" xml:space="preserve"><value>Software &amp; Startup</value></data>
+  <data name="NavFanCurves" xml:space="preserve"><value>Custom Fan Curves</value></data>
+  <data name="NavDrivers" xml:space="preserve"><value>Official Drivers</value></data>
+  <data name="NavCapabilities" xml:space="preserve"><value>Capabilities &amp; Diagnostics</value></data>
+  <data name="StatusStandardUser" xml:space="preserve"><value>Standard User</value></data>
+  <data name="StatusElevated" xml:space="preserve"><value>Administrator</value></data>
+  <data name="RecoveryBannerTitle" xml:space="preserve"><value>Interrupted Hardware Operation Detected</value></data>
+  <data name="BtnDismiss" xml:space="preserve"><value>Mark Reviewed &amp; Clear</value></data>
+  <data name="BtnRefresh" xml:space="preserve"><value>Refresh</value></data>
+  <data name="BtnRefreshElevated" xml:space="preserve"><value>Refresh (Elevated)</value></data>
+  <data name="BtnSaveDraft" xml:space="preserve"><value>Save Draft</value></data>
+  <data name="BtnResetReference" xml:space="preserve"><value>Reset to Baseline</value></data>
+  <data name="BtnApplyFullProfile" xml:space="preserve"><value>Apply Full Profile</value></data>
+  <data name="BtnApplyPowerOnly" xml:space="preserve"><value>Apply Verified Power Fields Only</value></data>
+  <data name="LblLiveVerifiedState" xml:space="preserve"><value>Verified Live Hardware State</value></data>
+  <data name="LblSelectedProfile" xml:space="preserve"><value>Selected Editable Profile</value></data>
+  <data name="LblThermalMode" xml:space="preserve"><value>Lenovo Thermal Mode</value></data>
+  <data name="LblWindowsPowerMode" xml:space="preserve"><value>Windows Power Mode</value></data>
+  <data name="LblAcState" xml:space="preserve"><value>Power Source</value></data>
+  <data name="LblStockFallbacks" xml:space="preserve"><value>Stock Firmware Fallbacks</value></data>
+  <data name="BtnQuiet" xml:space="preserve"><value>Quiet</value></data>
+  <data name="BtnBalanced" xml:space="preserve"><value>Balanced</value></data>
+  <data name="BtnPerformance" xml:space="preserve"><value>Performance</value></data>
+  <data name="ColField" xml:space="preserve"><value>Setting Field</value></data>
+  <data name="ColDraftValue" xml:space="preserve"><value>Draft Value</value></data>
+  <data name="ColReferenceValue" xml:space="preserve"><value>Baseline Reference</value></data>
+  <data name="ColLiveValue" xml:space="preserve"><value>Live Read-Back</value></data>
+  <data name="ColUnit" xml:space="preserve"><value>Unit</value></data>
+  <data name="ColVerified" xml:space="preserve"><value>Contract Status</value></data>
+  <data name="BatteryHeader" xml:space="preserve"><value>Battery Status &amp; Lenovo Conservation Mode</value></data>
+  <data name="LblChargePercent" xml:space="preserve"><value>Charge Level</value></data>
+  <data name="LblBatteryHealth" xml:space="preserve"><value>Battery Health</value></data>
+  <data name="LblDesignCapacity" xml:space="preserve"><value>Design Capacity</value></data>
+  <data name="LblFullCapacity" xml:space="preserve"><value>Full Charge Capacity</value></data>
+  <data name="LblCycleCount" xml:space="preserve"><value>Cycle Count</value></data>
+  <data name="LblConservationMode" xml:space="preserve"><value>Conservation Mode</value></data>
+  <data name="BtnToggleConservation" xml:space="preserve"><value>Toggle Conservation Mode</value></data>
+  <data name="TelemetryHeader" xml:space="preserve"><value>Live Hardware Telemetry</value></data>
+  <data name="ChkPauseGpuOnBattery" xml:space="preserve"><value>Pause dGPU polling on battery</value></data>
+  <data name="BtnManualGpuRefresh" xml:space="preserve"><value>Manual Refresh (Includes dGPU)</value></data>
+  <data name="LblCpuUsage" xml:space="preserve"><value>CPU Utilization</value></data>
+  <data name="LblCpuTemp" xml:space="preserve"><value>CPU Temperature</value></data>
+  <data name="LblMemoryUsage" xml:space="preserve"><value>Memory Usage</value></data>
+  <data name="LblDiskActivity" xml:space="preserve"><value>Disk Activity</value></data>
+  <data name="LblDiskCapacity" xml:space="preserve"><value>Disk Capacity</value></data>
+  <data name="LblGpuTelemetry" xml:space="preserve"><value>NVIDIA RTX Telemetry</value></data>
+  <data name="LblFanRpm" xml:space="preserve"><value>Cooling Fan RPM</value></data>
+  <data name="GraphicsHeader" xml:space="preserve"><value>Lenovo Graphics Routing Mode</value></data>
+  <data name="ChkConfirmGraphicsRecovery" xml:space="preserve"><value>I confirm an on-machine recovery path exists (BIOS / iGPU access) before switching graphics mode</value></data>
+  <data name="BtnApplyGraphicsMode" xml:space="preserve"><value>Request Mode Switch</value></data>
+  <data name="SoftwareHeader" xml:space="preserve"><value>Software, Startup &amp; Read-Only Lenovo Scan</value></data>
+  <data name="TabInstalledApps" xml:space="preserve"><value>Installed Apps</value></data>
+  <data name="TabStartupEntries" xml:space="preserve"><value>Startup Entries</value></data>
+  <data name="TabLenovoLeftovers" xml:space="preserve"><value>Lenovo Leftover Scan (Read-Only)</value></data>
+  <data name="BtnOpenWindowsApps" xml:space="preserve"><value>Open Windows Installed Apps</value></data>
+  <data name="BtnOpenWindowsStartup" xml:space="preserve"><value>Open Windows Startup Apps</value></data>
+  <data name="BtnScanLeftovers" xml:space="preserve"><value>Run Read-Only Leftover Scan</value></data>
+  <data name="FanHeader" xml:space="preserve"><value>Custom Fan Curves</value></data>
+  <data name="BtnReadFanTable" xml:space="preserve"><value>Read Firmware Fan Table (Elevated)</value></data>
+  <data name="BtnApplyFanCurve" xml:space="preserve"><value>Apply Fan Curve</value></data>
+  <data name="BtnRestoreFanDefault" xml:space="preserve"><value>Restore Default Policy</value></data>
+  <data name="DriversHeader" xml:space="preserve"><value>Official Hardware Drivers &amp; Verification</value></data>
+  <data name="BtnLenovoDrivers" xml:space="preserve"><value>Lenovo 83JJ Driver Page</value></data>
+  <data name="BtnNvidiaDrivers" xml:space="preserve"><value>NVIDIA Official Drivers</value></data>
+  <data name="BtnWindowsUpdate" xml:space="preserve"><value>Windows Update</value></data>
+  <data name="BtnOptionalUpdates" xml:space="preserve"><value>Windows Optional Updates</value></data>
+  <data name="BtnBrowseDriverExe" xml:space="preserve"><value>Verify Local Official Installer (.exe)</value></data>
+  <data name="ChkConfirmDriverLaunch" xml:space="preserve"><value>I confirmed the device, version, and official publisher above and want to run the interactive vendor installer</value></data>
+  <data name="BtnLaunchDriverExe" xml:space="preserve"><value>Launch Interactive Vendor Installer</value></data>
+  <data name="CapabilitiesHeader" xml:space="preserve"><value>Hardware Capabilities &amp; Diagnostics</value></data>
+  <data name="BtnRunElevatedProbe" xml:space="preserve"><value>Run Elevated Capability Probe</value></data>
+  <data name="BtnExportReport" xml:space="preserve"><value>Export Capability Report (JSON)</value></data>
+  <data name="LblSearch" xml:space="preserve"><value>Filter:</value></data>
+  <data name="LblCategory" xml:space="preserve"><value>Category:</value></data>
+  <data name="LblUnavailable" xml:space="preserve"><value>Unavailable</value></data>
+  <data name="FieldCpuLongTermPowerLimitW" xml:space="preserve"><value>CPU Long Term Turbo Power Limit</value></data>
+  <data name="FieldCpuCrossLoadingPowerLimitW" xml:space="preserve"><value>CPU Long Term Turbo Power Limit (Cross Loading)</value></data>
+  <data name="FieldCpuLongTermPowerLimitTau" xml:space="preserve"><value>CPU Long Term Turbo Power Limit Tau</value></data>
+  <data name="FieldCpuShortTermPowerLimitW" xml:space="preserve"><value>CPU Short Term Turbo Power Limit</value></data>
+  <data name="FieldCpuThermalControlCircuitC" xml:space="preserve"><value>CPU Thermal Control Circuit</value></data>
+  <data name="FieldGpuDynamicBoostW" xml:space="preserve"><value>GPU Dynamic Boost</value></data>
+  <data name="FieldGpuToCpuDynamicBoostW" xml:space="preserve"><value>GPU To CPU Dynamic Boost</value></data>
+  <data name="FieldGpuConfigurableTgpW" xml:space="preserve"><value>GPU Configurable TGP</value></data>
+  <data name="FieldGpuTargetTemperatureLimitC" xml:space="preserve"><value>GPU Target Temperature Limit</value></data>
+  <data name="FieldTotalProcessorPowerTargetAcW" xml:space="preserve"><value>Total Processor Power Target In AC</value></data>
+  <data name="ProfileDailyName" xml:space="preserve"><value>Daily</value></data>
+  <data name="ProfileGamingName" xml:space="preserve"><value>Gaming</value></data>
+  <data name="MsgPendingFanCapture" xml:space="preserve"><value>Pending capture: capture Daily/Gaming fan curves from Legion Zone before enabling full-profile apply.</value></data>
+  <data name="MsgAcOnline" xml:space="preserve"><value>AC Adapter Online</value></data>
+  <data name="MsgOnBattery" xml:space="preserve"><value>On Battery</value></data>
+  <data name="MsgVerifiedOnTarget" xml:space="preserve"><value>Verified</value></data>
+  <data name="MsgPendingProbe" xml:space="preserve"><value>Pending elevated WMI verification</value></data>
+  <data name="MsgFanAddPoint" xml:space="preserve"><value>Add Point</value></data>
+  <data name="MsgBrowseFile" xml:space="preserve"><value>Select Installer...</value></data>
+  <data name="MsgConservationOn" xml:space="preserve"><value>Conservation Mode (ON)</value></data>
+  <data name="MsgConservationOff" xml:space="preserve"><value>Normal Charging (OFF)</value></data>
+  <data name="MsgRapidCharge" xml:space="preserve"><value>Rapid Charge</value></data>
+  <data name="MsgPausedOnBattery" xml:space="preserve"><value>Paused on battery</value></data>
+  <data name="MsgRebootRequiredBanner" xml:space="preserve"><value>A graphics mode switch is pending. Please restart Windows to verify the new effective routing.</value></data>
+  <data name="MsgRecoveredLastGood" xml:space="preserve"><value>Primary settings file was corrupted and automatically recovered from last-good backup.</value></data>
+</root>

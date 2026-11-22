@@ -1,0 +1,49 @@
+<UserControl x:Class="Utility.App.Views.BatteryView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Utility.App.Localization">
+    <StackPanel>
+        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{loc:Tr BatteryHeader}" />
+
+        <Border Style="{StaticResource CardBorderStyle}">
+            <UniformGrid Columns="3">
+                <StackPanel Margin="0,0,12,12">
+                    <TextBlock Style="{StaticResource MutedLabelStyle}" Text="{loc:Tr LblChargePercent}" />
+                    <TextBlock FontSize="22" FontWeight="SemiBold" Text="{Binding BatteryChargeText}" Margin="0,4,0,0" />
+                </StackPanel>
+                <StackPanel Margin="0,0,12,12">
+                    <TextBlock Style="{StaticResource MutedLabelStyle}" Text="{loc:Tr LblAcState}" />
+                    <TextBlock FontSize="15" FontWeight="SemiBold" Text="{Binding BatteryActivityText}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                </StackPanel>
+                <StackPanel Margin="0,0,0,12">
+                    <TextBlock Style="{StaticResource MutedLabelStyle}" Text="{loc:Tr LblBatteryHealth}" />
+                    <TextBlock FontSize="22" FontWeight="SemiBold" Foreground="{StaticResource SuccessBrush}" Text="{Binding BatteryHealthText}" Margin="0,4,0,0" />
+                </StackPanel>
+                <StackPanel Margin="0,0,12,0">
+                    <TextBlock Style="{StaticResource MutedLabelStyle}" Text="{loc:Tr LblDesignCapacity}" />
+                    <TextBlock FontSize="15" FontWeight="SemiBold" Text="{Binding BatteryDesignCapText}" Margin="0,4,0,0" />
+                </StackPanel>
+                <StackPanel Margin="0,0,12,0">
+                    <TextBlock Style="{StaticResource MutedLabelStyle}" Text="{loc:Tr LblFullCapacity}" />
+                    <TextBlock FontSize="15" FontWeight="SemiBold" Text="{Binding BatteryFullCapText}" Margin="0,4,0,0" />
+                </StackPanel>
+                <StackPanel>
+                    <TextBlock Style="{StaticResource MutedLabelStyle}" Text="{loc:Tr LblCycleCount}" />
+                    <TextBlock FontSize="15" FontWeight="SemiBold" Text="{Binding BatteryCycleText}" Margin="0,4,0,0" />
+                </StackPanel>
+            </UniformGrid>
+        </Border>
+
+        <Border Style="{StaticResource CardBorderStyle}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource CardHeaderStyle}" Text="{loc:Tr LblConservationMode}" />
+                <TextBlock FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" Text="{Binding BatteryConservationText}" Margin="0,0,0,8" />
+                <TextBlock Style="{StaticResource MutedLabelStyle}" Text="{Binding BatteryRawDetailText}" TextWrapping="Wrap" Margin="0,0,0,12" />
+                <StackPanel Orientation="Horizontal">
+                    <Button Style="{StaticResource PrimaryButtonStyle}" Content="{loc:Tr BtnToggleConservation}" Command="{Binding ToggleConservationCommand}" Margin="0,0,10,0" />
+                    <Button Content="{loc:Tr BtnRefresh}" Command="{Binding RefreshBatteryCommand}" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

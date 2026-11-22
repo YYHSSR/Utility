@@ -1,0 +1,54 @@
+<UserControl x:Class="Utility.App.Views.GraphicsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Utility.App.Localization">
+    <StackPanel>
+        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{loc:Tr GraphicsHeader}" />
+
+        <Border Style="{StaticResource CardBorderStyle}" Visibility="{Binding HasPendingGraphicsReboot, Converter={StaticResource BoolToVis}}">
+            <TextBlock Foreground="{StaticResource WarningBrush}" FontWeight="SemiBold" Text="{loc:Tr MsgRebootRequiredBanner}" TextWrapping="Wrap" />
+        </Border>
+
+        <Border Style="{StaticResource CardBorderStyle}">
+            <StackPanel>
+                <UniformGrid Columns="2" Margin="0,0,0,10">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource MutedLabelStyle}" Text="Effective Mode" />
+                        <TextBlock FontSize="16" FontWeight="SemiBold" Text="{Binding EffectiveGraphicsText}" Margin="0,4,0,0" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource MutedLabelStyle}" Text="Pending Mode" />
+                        <TextBlock FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource WarningBrush}" Text="{Binding PendingGraphicsText}" Margin="0,4,0,0" />
+                    </StackPanel>
+                </UniformGrid>
+
+                <TextBlock Style="{StaticResource MutedLabelStyle}" Text="{Binding GraphicsNoteText}" TextWrapping="Wrap" Margin="0,0,0,12" />
+
+                <DataGrid ItemsSource="{Binding SupportedGraphicsModes}" MaxHeight="180" Margin="0,0,0,12">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Mode" Binding="{Binding Mode}" Width="*" />
+                        <DataGridCheckBoxColumn Header="Reboot" Binding="{Binding RequiresReboot}" Width="0.6*" />
+                        <DataGridCheckBoxColumn Header="Display Interrupt" Binding="{Binding MayInterruptDisplays}" Width="0.9*" />
+                        <DataGridTextColumn Header="Details" Binding="{Binding Description}" Width="2.5*" />
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock VerticalAlignment="Center" Style="{StaticResource MutedLabelStyle}" Text="Target:" Margin="0,0,8,0" />
+                    <ComboBox Width="220"
+                              ItemsSource="{Binding SupportedGraphicsModes}"
+                              DisplayMemberPath="Mode"
+                              SelectedValuePath="Mode"
+                              SelectedValue="{Binding SelectedTargetGraphicsMode}" />
+                </StackPanel>
+
+                <CheckBox IsChecked="{Binding ConfirmGraphicsRecoveryPath}" Content="{loc:Tr ChkConfirmGraphicsRecovery}" Margin="0,0,0,12" />
+
+                <StackPanel Orientation="Horizontal">
+                    <Button Style="{StaticResource PrimaryButtonStyle}" Content="{loc:Tr BtnApplyGraphicsMode}" Command="{Binding ApplyGraphicsModeCommand}" Margin="0,0,10,0" />
+                    <Button Content="{loc:Tr BtnRefreshElevated}" Command="{Binding RefreshGraphicsCommand}" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>
