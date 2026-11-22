@@ -1,7 +1,6 @@
 using Utility.Core.Models;
 using Utility.Core.Services;
 using Utility.Platform.Lenovo;
-using Utility.Platform.Native;
 
 namespace Utility.Platform.Providers;
 
@@ -14,16 +13,13 @@ public sealed class LenovoHardwareControlProvider : ILenovoHardwareControlProvid
     private readonly ElevatedWorkerClient _elevated = new();
     private readonly IBatteryProvider _battery;
     private readonly ITelemetryProvider _telemetry;
-    private readonly JsonStateStore _stateStore;
 
     public LenovoHardwareControlProvider(
         IBatteryProvider battery,
-        ITelemetryProvider telemetry,
-        JsonStateStore stateStore)
+        ITelemetryProvider telemetry)
     {
         _battery = battery;
         _telemetry = telemetry;
-        _stateStore = stateStore;
     }
 
     public Task<MachineIdentity> GetMachineIdentityAsync(CancellationToken ct = default) =>
@@ -55,44 +51,23 @@ public sealed class LenovoHardwareControlProvider : ILenovoHardwareControlProvid
         var otherCap = _wmi.ProbeWmiClassAccess(FeatureId.LenovoWmiOther, LenovoWmiConstants.OtherMethodClass, "root\\wmi");
         var fanCap = _wmi.ProbeWmiClassAccess(FeatureId.LenovoWmiFan, LenovoWmiConstants.FanTableDataClass, "root\\wmi");
 
-        var perfStatus = !machine.IsTargetLegion83JJ
-            ? CapabilityAvailability.UnsupportedMachine
-            : (gzCap.ReadAvailable && otherCap.ReadAvailable)
-                ? CapabilityAvailability.Available
-                : gzCap.Status;
-
-        var perfCap = new FeatureCapability(
-            FeatureId.PerformanceProfiles,
-            ReadAvailable: gzCap.ReadAvailable && otherCap.ReadAvailable,
-            WriteAvailable: isElevated && gzCap.ReadAvailable && otherCap.ReadAvailable,
-            Status: perfStatus,
-            Reason: perfStatus == CapabilityAvailability.InsufficientPrivilege
-                ? "Lenovo WMI profile control requires on-demand administrator elevation."
-                : gzCap.Reason,
-            Provider: "LENOVO_GAMEZONE_DATA + LENOVO_OTHER_METHOD + powrprof",
-            LastCheckedUtc: now);
-
-        var gfxCap = new FeatureCapability(
-            FeatureId.GraphicsMode,
-            ReadAvailable: gzCap.ReadAvailable,
-            WriteAvailable: isElevated && gzCap.ReadAvailable,
-            Status: gzCap.Status,
-            Reason: gzCap.Status == CapabilityAvailability.InsufficientPrivilege
-                ? "Graphics MUX mode WMI requires on-demand elevation."
-                : gzCap.Reason,
-            Provider: "LENOVO_GAMEZONE_DATA",
-            LastCheckedUtc: now);
-
-        var fanFeatureCap = new FeatureCapability(
-            FeatureId.CustomFanCurves,
-            ReadAvailable: fanCap.ReadAvailable,
-            WriteAvailable: isElevated && fanCap.ReadAvailable,
-            Status: fanCap.Status,
-            Reason: fanCap.Status == CapabilityAvailability.InsufficientPrivilege
-                ? "Fan table read/write requires on-demand elevation; owner Daily/Gaming curves also pending capture."
-                : fanCap.Reason,
-            Provider: "LENOVO_FAN_TABLE_DATA + LENOVO_FAN_METHOD",
-            LastCheckedUtc: now);
+        var perfCap = ReadOnlyCapability(FeatureId.PerformanceProfiles, gzCap, machine,
+            "LENOVO_GAMEZONE_DATA + powrprof",
+            "Original preset power limits can be switched after elevation on 83JJ PTCN18WW. Full profiles remain pending.");
+        if (isElevated && gzCap.ReadAvailable && otherCap.ReadAvailable &&
+            machine.IsTargetLegion83JJ && machine.BiosVersion == "PTCN18WW")
+        {
+            perfCap = perfCap with { WriteAvailable = true, Status = CapabilityAvailability.Available };
+        }
+        var gfx = await ReadGraphicsStatusAsync(allowElevation: false, ct).ConfigureAwait(false);
+        var gfxCap = new FeatureCapability(FeatureId.GraphicsMode, gfx.IsVerifiedLiveRead, gfx.IsVerifiedLiveRead,
+            gfx.IsVerifiedLiveRead ? CapabilityAvailability.Available : gzCap.Status,
+            gfx.StatusNote, "LENOVO_GAMEZONE_DATA + Win32_VideoController", now);
+        var fanFeatureCap = ReadOnlyCapability(FeatureId.CustomFanCurves, fanCap, machine,
+            "LENOVO_FAN_TABLE_DATA + LENOVO_FAN_METHOD",
+            "On 83JJ / PTCN18WW, ten fan speed levels can be changed in custom mode on AC.");
+        if (fanCap.ReadAvailable && machine.IsTargetLegion83JJ && machine.BiosVersion == "PTCN18WW")
+            fanFeatureCap = fanFeatureCap with { Status = CapabilityAvailability.Available, WriteAvailable = true };
 
         var swCap = new FeatureCapability(
             FeatureId.SoftwareAndStartup,
@@ -106,22 +81,17 @@ public sealed class LenovoHardwareControlProvider : ILenovoHardwareControlProvid
         var drvCap = new FeatureCapability(
             FeatureId.OfficialDrivers,
             ReadAvailable: true,
-            WriteAvailable: true,
+            WriteAvailable: false,
             Status: CapabilityAvailability.Available,
-            Reason: "Win32_PnPSignedDriver inventory, WinVerifyTrust package check, and Windows Update links ready.",
-            Provider: "Win32_PnPSignedDriver + WinVerifyTrust",
+            Reason: "Driver inventory, signature inspection, and official installation links are available.",
+            Provider: "SetupAPI / Win32_PnPSignedDriver + WinVerifyTrust",
             LastCheckedUtc: now);
 
         var unresolved = new List<string>
         {
-            "Daily and Gaming custom fan curves are pending capture from Legion Zone before uninstall.",
-            "CPU package temperature and fan RPM sensors are unavailable in standard-user mode."
+            "Power switching preserves the current custom fan curve. The gaming fan curve has no verified capture.",
+            "Fan draft geometry is stored separately from the active Lenovo fan table."
         };
-        if (!isElevated)
-        {
-            unresolved.Add("Lenovo WMI write capabilities and capability bounds require elevated probe verification on target 83JJ.");
-        }
-
         return new CapabilityReport(
             TimestampUtc: now,
             IsElevated: isElevated,
@@ -152,80 +122,54 @@ public sealed class LenovoHardwareControlProvider : ILenovoHardwareControlProvid
         return fallback with { StatusNote = resp.Message ?? fallback.StatusNote };
     }
 
-    public async Task<OperationResult<ThermalMode>> SetThermalModeAsync(ThermalMode mode, CancellationToken ct = default)
+    public Task<OperationResult<ThermalMode>> SetThermalModeAsync(ThermalMode mode, CancellationToken ct = default) =>
+        WritePendingAsync<ThermalMode>("Lenovo thermal mode changes");
+
+    public async Task<OperationResult<LiveThermalSnapshot>> ApplyOwnerPowerPresetAsync(string profileId, CancellationToken ct = default)
     {
         if (LenovoWmiProvider.IsProcessElevated())
-        {
-            var ok = _wmi.SetThermalModeDirect(mode, out var msg);
-            return ok ? OperationResult<ThermalMode>.Ok(mode, msg) : OperationResult<ThermalMode>.Fail("WMI_SET_FAILED", msg);
-        }
+            return await Task.Run(() => _wmi.ApplyOwnerPowerPresetDirect(profileId), ct).ConfigureAwait(false);
 
-        var resp = await _elevated.ExecuteRequestAsync(new ElevatedRequest
+        var response = await _elevated.ExecuteRequestAsync(new ElevatedRequest
         {
             AuthToken = string.Empty,
-            Operation = ElevatedOperation.SetThermalMode,
-            ThermalMode = mode
+            Operation = ElevatedOperation.ApplyOwnerPowerPreset,
+            OwnerProfileId = profileId
         }, ct).ConfigureAwait(false);
 
-        if (resp.WasCancelled) return OperationResult<ThermalMode>.Cancelled(resp.Message ?? "Cancelled.");
-        return resp.Success
-            ? OperationResult<ThermalMode>.Ok(mode, resp.Message ?? "OK")
-            : OperationResult<ThermalMode>.Fail(resp.ErrorCode ?? "ELEVATED_ERROR", resp.Message ?? "Failed to set thermal mode.");
+        if (response.WasCancelled)
+            return OperationResult<LiveThermalSnapshot>.Cancelled(response.Message ?? "Cancelled.");
+        return response.Success && response.ThermalSnapshot is not null
+            ? OperationResult<LiveThermalSnapshot>.Ok(response.ThermalSnapshot, response.Message ?? "Verified.")
+            : OperationResult<LiveThermalSnapshot>.Fail(response.ErrorCode ?? "WORKER_UNVERIFIED", response.Message ?? "Switch unverified.");
     }
 
-    public Task<OperationResult<WindowsPowerMode>> SetWindowsPowerModeAsync(WindowsPowerMode mode, CancellationToken ct = default)
+    public Task<OperationResult<WindowsPowerMode>> SetWindowsPowerModeAsync(WindowsPowerMode mode, CancellationToken ct = default) =>
+        WritePendingAsync<WindowsPowerMode>("Windows power mode changes as part of a Lenovo profile");
+
+    public async Task<OperationResult<CoolingCycleResult>> RunCoolingCycleAsync(CancellationToken stop)
     {
-        return Task.Run(() =>
+        if (LenovoWmiProvider.IsProcessElevated())
+            return await Task.Run(() => _wmi.RunCoolingCycleDirect(stop)).ConfigureAwait(false);
+
+        var response = await _elevated.ExecuteRequestAsync(new ElevatedRequest
         {
-            var ok = PowerSchemeInterop.TrySetWindowsPowerMode(mode, out var detail);
-            return ok
-                ? OperationResult<WindowsPowerMode>.Ok(mode, detail)
-                : OperationResult<WindowsPowerMode>.Fail("WINDOWS_POWER_MODE_UNMAPPED", detail);
-        }, ct);
+            AuthToken = string.Empty,
+            Operation = ElevatedOperation.RunCoolingCycle
+        }, stop).ConfigureAwait(false);
+
+        if (response.WasCancelled)
+            return OperationResult<CoolingCycleResult>.Cancelled(response.Message ?? "Cancelled.");
+        return response.Success && response.CoolingCycle is not null
+            ? OperationResult<CoolingCycleResult>.Ok(response.CoolingCycle, response.Message ?? "Verified.")
+            : OperationResult<CoolingCycleResult>.Fail(response.ErrorCode ?? "WORKER_UNVERIFIED", response.Message ?? "Cooling cycle unverified.");
     }
 
-    public async Task<OperationResult<IReadOnlyDictionary<string, int?>>> ApplyPowerFieldsAsync(
+    public Task<OperationResult<IReadOnlyDictionary<string, int?>>> ApplyPowerFieldsAsync(
         IReadOnlyDictionary<string, int> backendValuesByField,
         IReadOnlyList<FieldHardwareContract> contracts,
-        CancellationToken ct = default)
-    {
-        if (LenovoWmiProvider.IsProcessElevated())
-        {
-            var (applied, failed, msg) = _wmi.ApplyPowerFieldsDirect(backendValuesByField);
-            if (failed.Count > 0)
-            {
-                return OperationResult<IReadOnlyDictionary<string, int?>>.Fail("WMI_FIELD_WRITE_FAILED", msg, failed);
-            }
-
-            var readBack = _wmi.ReadLivePowerValuesDirect();
-            return OperationResult<IReadOnlyDictionary<string, int?>>.Ok(readBack.AsFieldMap(), msg);
-        }
-
-        var settings = BuildSettingsFromBackendValues(backendValuesByField, contracts);
-        var resp = await _elevated.ExecuteRequestAsync(new ElevatedRequest
-        {
-            AuthToken = string.Empty,
-            Operation = ElevatedOperation.ApplyPowerFields,
-            PowerSettings = settings
-        }, ct).ConfigureAwait(false);
-
-        if (resp.WasCancelled)
-        {
-            return OperationResult<IReadOnlyDictionary<string, int?>>.Cancelled(resp.Message ?? "Cancelled.");
-        }
-
-        if (!resp.Success)
-        {
-            return OperationResult<IReadOnlyDictionary<string, int?>>.Fail(
-                resp.ErrorCode ?? "POWER_WRITE_FAILED",
-                resp.Message ?? "Failed to apply power fields.",
-                resp.FailedFields);
-        }
-
-        return OperationResult<IReadOnlyDictionary<string, int?>>.Ok(
-            resp.ReadBackPowerValues ?? new Dictionary<string, int?>(),
-            resp.Message ?? "Applied.");
-    }
+        CancellationToken ct = default) =>
+        WritePendingAsync<IReadOnlyDictionary<string, int?>>("Lenovo power and temperature limit changes");
 
     public async Task<OperationResult<FanCurveProfile>> ReadFanCurveAsync(bool allowElevation, CancellationToken ct = default)
     {
@@ -259,32 +203,35 @@ public sealed class LenovoHardwareControlProvider : ILenovoHardwareControlProvid
     }
 
     public Task<OperationResult<FanCurveProfile>> ApplyFanCurveAsync(FanCurveProfile curve, CancellationToken ct = default) =>
-        Task.FromResult(OperationResult<FanCurveProfile>.Fail(
-            "FAN_WRITE_NOT_VALIDATED_ON_TARGET",
-            "Firmware fan-table write payload requires target 83JJ capture & controlled verification before enabling."));
+        WritePendingAsync<FanCurveProfile>("Fan table changes");
 
-    public async Task<OperationResult<FanCurveProfile>> RestoreDefaultFanCurveAsync(CancellationToken ct = default)
+    public async Task<OperationResult<FanCurveProfile>> SetFanSpeedLevelsAsync(int[] levels, CancellationToken ct = default)
     {
-        var resp = await _elevated.ExecuteRequestAsync(new ElevatedRequest
+        if (LenovoWmiProvider.IsProcessElevated())
+            return await Task.Run(() => _wmi.SetFanSpeedLevelsDirect(levels), ct).ConfigureAwait(false);
+
+        var response = await _elevated.ExecuteRequestAsync(new ElevatedRequest
         {
             AuthToken = string.Empty,
-            Operation = ElevatedOperation.RestoreDefaultFanTables
+            Operation = ElevatedOperation.SetFanSpeedLevels,
+            FanLevels = levels
         }, ct).ConfigureAwait(false);
 
-        if (resp.WasCancelled) return OperationResult<FanCurveProfile>.Cancelled(resp.Message ?? "Cancelled.");
-        return resp.Success && resp.FanCurve is not null
-            ? OperationResult<FanCurveProfile>.Ok(resp.FanCurve, resp.Message ?? "Restored firmware default fan policy.")
-            : OperationResult<FanCurveProfile>.Fail(resp.ErrorCode ?? "FAN_RESTORE_FAILED", resp.Message ?? "Restore failed.");
+        if (response.WasCancelled)
+            return OperationResult<FanCurveProfile>.Cancelled(response.Message ?? "Cancelled.");
+        return response.Success && response.FanCurve is { } curve
+            ? OperationResult<FanCurveProfile>.Ok(curve)
+            : OperationResult<FanCurveProfile>.Fail(response.ErrorCode ?? "WORKER_UNVERIFIED", response.Message ?? "Fan level change unverified.");
     }
+
+    public Task<OperationResult<FanCurveProfile>> RestoreDefaultFanCurveAsync(CancellationToken ct = default) =>
+        WritePendingAsync<FanCurveProfile>("Fan table restoration");
 
     public async Task<GraphicsStatusSnapshot> ReadGraphicsStatusAsync(bool allowElevation, CancellationToken ct = default)
     {
-        var settings = await _stateStore.LoadSettingsAsync(ct).ConfigureAwait(false);
-        var pending = settings.Settings.PendingGraphicsMode;
-
         if (LenovoWmiProvider.IsProcessElevated() || !allowElevation)
         {
-            return await Task.Run(() => _wmi.ReadGraphicsStatusDirect(pending), ct).ConfigureAwait(false);
+            return await Task.Run(_wmi.ReadGraphicsStatusDirect, ct).ConfigureAwait(false);
         }
 
         var resp = await _elevated.ExecuteRequestAsync(new ElevatedRequest
@@ -295,64 +242,50 @@ public sealed class LenovoHardwareControlProvider : ILenovoHardwareControlProvid
 
         if (resp.Success && resp.GraphicsStatus is not null)
         {
-            return resp.GraphicsStatus with { PendingMode = pending, RebootRequired = pending is not null && pending != resp.GraphicsStatus.EffectiveMode };
+            return resp.GraphicsStatus;
         }
 
-        return await Task.Run(() => _wmi.ReadGraphicsStatusDirect(pending), ct).ConfigureAwait(false);
+        var fallback = await Task.Run(_wmi.ReadGraphicsStatusDirect, ct).ConfigureAwait(false);
+        return fallback with { StatusNote = resp.WasCancelled ? "USER_CANCELLED" : resp.Message ?? fallback.StatusNote };
     }
 
     public async Task<OperationResult<GraphicsStatusSnapshot>> SetGraphicsModeAsync(GraphicsRoutingMode mode, CancellationToken ct = default)
     {
-        var resp = await _elevated.ExecuteRequestAsync(new ElevatedRequest
+        if (LenovoWmiProvider.IsProcessElevated())
+            return await Task.Run(() => _wmi.SetGraphicsModeDirect(mode), ct).ConfigureAwait(false);
+
+        var response = await _elevated.ExecuteRequestAsync(new ElevatedRequest
         {
             AuthToken = string.Empty,
             Operation = ElevatedOperation.SetGraphicsMode,
             GraphicsMode = mode
         }, ct).ConfigureAwait(false);
 
-        if (resp.WasCancelled)
-        {
-            return OperationResult<GraphicsStatusSnapshot>.Cancelled(resp.Message ?? "Cancelled.");
-        }
-
-        if (!resp.Success || resp.GraphicsStatus is null)
-        {
-            return OperationResult<GraphicsStatusSnapshot>.Fail(resp.ErrorCode ?? "GRAPHICS_SWITCH_FAILED", resp.Message ?? "Graphics mode switch failed.");
-        }
-
-        var loaded = await _stateStore.LoadSettingsAsync(ct).ConfigureAwait(false);
-        await _stateStore.SaveSettingsAsync(loaded.Settings with
-        {
-            PendingGraphicsMode = resp.GraphicsStatus.RebootRequired ? mode : null,
-            LastVerifiedGraphicsMode = resp.GraphicsStatus.EffectiveMode
-        }, ct).ConfigureAwait(false);
-
-        return OperationResult<GraphicsStatusSnapshot>.Ok(resp.GraphicsStatus, resp.Message ?? "Graphics mode updated.");
+        if (response.WasCancelled)
+            return OperationResult<GraphicsStatusSnapshot>.Cancelled(response.Message ?? "Cancelled.");
+        return response.Success && response.GraphicsStatus is { } snapshot
+            ? OperationResult<GraphicsStatusSnapshot>.Ok(snapshot)
+            : OperationResult<GraphicsStatusSnapshot>.Fail(response.ErrorCode ?? "WORKER_UNVERIFIED", response.Message ?? "Graphics switch unverified.");
     }
 
-    private static ProfilePowerSettings BuildSettingsFromBackendValues(
-        IReadOnlyDictionary<string, int> backendValues,
-        IReadOnlyList<FieldHardwareContract> contracts)
-    {
-        int? Decode(string key)
-        {
-            if (!backendValues.TryGetValue(key, out var raw)) return null;
-            var c = contracts.FirstOrDefault(x => x.FieldKey == key);
-            return c is null ? raw : ProfileValidationService.FromBackendValue(raw, c);
-        }
+    private static Task<OperationResult<T>> WritePendingAsync<T>(string operation) =>
+        Task.FromResult(OperationResult<T>.Fail("WRITE_NOT_VALIDATED",
+            $"{operation} require target firmware validation before use. No changes were made."));
 
-        return new ProfilePowerSettings
+    private static FeatureCapability ReadOnlyCapability(
+        FeatureId feature,
+        FeatureCapability source,
+        MachineIdentity machine,
+        string provider,
+        string note) =>
+        source with
         {
-            CpuLongTermPowerLimitW = Decode(nameof(ProfilePowerSettings.CpuLongTermPowerLimitW)),
-            CpuCrossLoadingPowerLimitW = Decode(nameof(ProfilePowerSettings.CpuCrossLoadingPowerLimitW)),
-            CpuLongTermPowerLimitTau = Decode(nameof(ProfilePowerSettings.CpuLongTermPowerLimitTau)),
-            CpuShortTermPowerLimitW = Decode(nameof(ProfilePowerSettings.CpuShortTermPowerLimitW)),
-            CpuThermalControlCircuitC = Decode(nameof(ProfilePowerSettings.CpuThermalControlCircuitC)),
-            GpuDynamicBoostW = Decode(nameof(ProfilePowerSettings.GpuDynamicBoostW)),
-            GpuToCpuDynamicBoostW = Decode(nameof(ProfilePowerSettings.GpuToCpuDynamicBoostW)),
-            GpuConfigurableTgpW = Decode(nameof(ProfilePowerSettings.GpuConfigurableTgpW)),
-            GpuTargetTemperatureLimitC = Decode(nameof(ProfilePowerSettings.GpuTargetTemperatureLimitC)),
-            TotalProcessorPowerTargetAcW = Decode(nameof(ProfilePowerSettings.TotalProcessorPowerTargetAcW))
+            Feature = feature,
+            WriteAvailable = false,
+            Status = !machine.IsTargetLegion83JJ ? CapabilityAvailability.UnsupportedMachine
+                : source.ReadAvailable ? CapabilityAvailability.PendingValidation : source.Status,
+            Reason = source.ReadAvailable ? note : $"{source.Reason} {note}",
+            Provider = provider
         };
-    }
+
 }

@@ -70,8 +70,7 @@ public static class WinTrustInterop
             FileDescription: fvi.FileDescription,
             FileVersion: fvi.FileVersion,
             CompanyName: fvi.CompanyName,
-            PeArchitecture: peArch,
-            SupportsCurrentOs: Environment.OSVersion.Platform == PlatformID.Win32NT && Environment.Is64BitOperatingSystem);
+            PeArchitecture: peArch);
     }
 
     public static string ComputeSha256Hex(string filePath)
@@ -125,7 +124,10 @@ public static class WinTrustInterop
     {
         try
         {
-            using var cert = X509CertificateLoader.LoadCertificateFromFile(filePath);
+            // Inspect the signer embedded in a PE; LoadCertificateFromFile expects a certificate file.
+#pragma warning disable SYSLIB0057
+            using var cert = X509Certificate.CreateFromSignedFile(filePath);
+#pragma warning restore SYSLIB0057
             return (cert.Subject, cert.Issuer);
         }
         catch
@@ -162,7 +164,7 @@ public static class WinTrustInterop
             return machine switch
             {
                 0x8664 => "x64",
-                0x014C => "x86_stub_for_x64_sfx",
+                0x014C => "x86",
                 0xAA64 => "arm64",
                 _ => $"0x{machine:X4}"
             };

@@ -37,8 +37,74 @@ public sealed class HardwareWriteCoordinator
         return journal.ActiveInProgress;
     }
 
+    public Task<OperationResult<LiveThermalSnapshot>> ApplyOwnerPowerPresetAsync(string profileId)
+    {
+        if (profileId is not (ProfileSeedFactory.DailyId or ProfileSeedFactory.GamingId))
+            return Task.FromResult(OperationResult<LiveThermalSnapshot>.Fail("UNSUPPORTED_PRESET", "Unknown profile."));
+
+        return RunJournaledWriteAsync(new OperationJournalEntry
+        {
+            OperationId = Guid.NewGuid().ToString("N"),
+            OperationType = "ApplyOwnerPresetPower",
+            TargetDescription = profileId,
+            Status = OperationStatus.InProgress,
+            StartedUtc = DateTimeOffset.UtcNow,
+            RequestedPower = ProfileSeedFactory.CreatePristineReference(profileId).Power,
+            RequestedThermalMode = ThermalMode.Custom
+        }, () => _hardware.ApplyOwnerPowerPresetAsync(profileId));
+    }
+
+    public Task<OperationResult<CoolingCycleResult>> RunCoolingCycleAsync(CancellationToken stop) =>
+        RunJournaledWriteAsync(new OperationJournalEntry
+        {
+            OperationId = Guid.NewGuid().ToString("N"),
+            OperationType = "CoolingCycle",
+            TargetDescription = "Temporary fan full speed",
+            Status = OperationStatus.InProgress,
+            StartedUtc = DateTimeOffset.UtcNow
+        }, () => stop.IsCancellationRequested
+            ? Task.FromResult(OperationResult<CoolingCycleResult>.Cancelled())
+            : _hardware.RunCoolingCycleAsync(stop));
+
+    private async Task<OperationResult<T>> RunJournaledWriteAsync<T>(
+        OperationJournalEntry entry, Func<Task<OperationResult<T>>> operation)
+    {
+        await _writeLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            using var journalLease = TryAcquireJournalLease();
+            if (journalLease is null)
+                return OperationResult<T>.Fail("BUSY", "Another Utility window is controlling the hardware.");
+            if (await GetInterruptedOperationAsync().ConfigureAwait(false) is not null)
+                return OperationResult<T>.Fail("RECOVERY_PENDING", "Check the interrupted operation before writing again.");
+
+            await BeginJournalEntryAsync(entry, CancellationToken.None).ConfigureAwait(false);
+            var result = await operation().ConfigureAwait(false);
+            OperationStatus? final = result.Success ? OperationStatus.Succeeded
+                : result.WasCancelledByUser ? OperationStatus.CancelledByUser
+                : result.ErrorCode == "ROLLED_BACK" ? OperationStatus.RolledBack
+                : result.ErrorCode is "PREFLIGHT_REJECTED" or "FAN_BASELINE_UNAVAILABLE" or
+                    "UNSUPPORTED_PRESET" or "UNSUPPORTED_OPERATION" or "BUSY" or "WORKER_NOT_FOUND" or
+                    "ELEVATION_START_FAILED" or "COOLING_UNAVAILABLE" or "COOLING_REQUIRES_AC" or
+                    "COOLING_SENSOR_UNAVAILABLE" or "COOLING_ALREADY_ACTIVE" ? OperationStatus.FailedBeforeWrite
+                : null;
+            if (final is not null)
+                await FinalizeJournalEntryAsync(entry, final.Value, [], [], result.Message, CancellationToken.None).ConfigureAwait(false);
+
+            return result;
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
     public async Task DismissInterruptedOperationAsync(string operationId, string resolutionNote, CancellationToken ct = default)
     {
+        using var journalLease = TryAcquireJournalLease();
+        if (journalLease is null)
+            throw new InvalidOperationException("Cannot acknowledge the journal while a power switch is running.");
+
         var journal = await _stateStore.LoadJournalAsync(ct).ConfigureAwait(false);
         if (journal.ActiveInProgress is null || journal.ActiveInProgress.OperationId != operationId)
         {
@@ -47,7 +113,7 @@ public sealed class HardwareWriteCoordinator
 
         var completed = journal.ActiveInProgress with
         {
-            Status = OperationStatus.RolledBack,
+            Status = OperationStatus.Acknowledged,
             CompletedUtc = DateTimeOffset.UtcNow,
             Summary = resolutionNote
         };
@@ -93,7 +159,7 @@ public sealed class HardwareWriteCoordinator
                     validation.MissingFields);
             }
 
-            if (ProfileValidationService.DoesLiveMatchProfile(baseline, profile, contracts))
+            if (ProfileValidationService.DoesLiveMatchPowerFields(baseline, profile, contracts))
             {
                 return new HardwareWriteReport(
                     Guid.NewGuid().ToString("N"),
@@ -348,6 +414,20 @@ public sealed class HardwareWriteCoordinator
     {
         var journal = await _stateStore.LoadJournalAsync(ct).ConfigureAwait(false);
         await _stateStore.SaveJournalAsync(journal with { ActiveInProgress = entry }, ct).ConfigureAwait(false);
+    }
+
+    private FileStream? TryAcquireJournalLease()
+    {
+        Directory.CreateDirectory(_stateStore.BaseDirectory);
+        try
+        {
+            return new FileStream(Path.Combine(_stateStore.BaseDirectory, "power-journal.lock"),
+                FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        }
+        catch (IOException ex) when ((ex.HResult & 0xFFFF) is 32 or 33)
+        {
+            return null;
+        }
     }
 
     private async Task FinalizeJournalEntryAsync(

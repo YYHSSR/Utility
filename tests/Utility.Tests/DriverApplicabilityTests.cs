@@ -21,17 +21,16 @@ public sealed class DriverApplicabilityTests
         FileDescription: "NVIDIA GeForce RTX 4060 Laptop GPU Driver",
         FileVersion: "572.16",
         CompanyName: "NVIDIA Corporation",
-        PeArchitecture: "x64",
-        SupportsCurrentOs: true);
+        PeArchitecture: "x64");
 
     [Fact]
-    public void AcceptsVerifiedOfficialMatchingDriverExe()
+    public void SignedFileStillRequiresAnOfficialInstallationRoute()
     {
         var decision = DriverApplicabilityEvaluator.Evaluate(MakeBasePackage(), Target83JJ);
-        Assert.True(decision.IsAllowedToLaunch);
+        Assert.False(decision.IsAllowedToLaunch);
         Assert.True(decision.RequiresInteractiveUserConfirm);
         Assert.False(decision.IsBiosOrFirmwarePackage);
-        Assert.Equal("VERIFIED_OFFICIAL_EXE", decision.VerdictCode);
+        Assert.Equal("USE_OFFICIAL_INSTALLATION_ROUTE", decision.VerdictCode);
     }
 
     [Fact]
@@ -49,9 +48,6 @@ public sealed class DriverApplicabilityTests
         var infPkg = MakeBasePackage() with { FilePath = @"C:\Downloads\nv_disp.inf", FileExtension = ".inf" };
         Assert.Equal("DEFER_INF_CATALOG", DriverApplicabilityEvaluator.Evaluate(infPkg, Target83JJ).VerdictCode);
 
-        var wrongPublisher = MakeBasePackage() with { SignerSubject = "CN=RandomRepack", CompanyName = "RandomRepack" };
-        Assert.Equal("UNRECOGNIZED_PUBLISHER", DriverApplicabilityEvaluator.Evaluate(wrongPublisher, Target83JJ).VerdictCode);
-
         var wrongModel = MakeBasePackage() with
         {
             FilePath = @"C:\Downloads\lenovo_wlan_82WK.exe",
@@ -59,6 +55,6 @@ public sealed class DriverApplicabilityTests
             CompanyName = "Lenovo",
             ProductName = "WLAN Driver 82WK"
         };
-        Assert.Equal("MODEL_MISMATCH", DriverApplicabilityEvaluator.Evaluate(wrongModel, Target83JJ).VerdictCode);
+        Assert.False(DriverApplicabilityEvaluator.Evaluate(wrongModel, Target83JJ).IsAllowedToLaunch);
     }
 }

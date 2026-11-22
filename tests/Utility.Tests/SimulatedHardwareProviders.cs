@@ -16,6 +16,14 @@ internal sealed class SimulatedLenovoHardwareProvider : ILenovoHardwareControlPr
     public bool SimulateUserCancelled { get; set; }
     public bool FailNextPowerWrite { get; set; }
     public bool ReturnMismatchedReadBack { get; set; }
+    public OperationResult<LiveThermalSnapshot>? OwnerPowerResult { get; set; }
+    public OperationResult<CoolingCycleResult>? CoolingResult { get; set; }
+
+    public Task<OperationResult<LiveThermalSnapshot>> ApplyOwnerPowerPresetAsync(string profileId, CancellationToken ct = default) =>
+        Task.FromResult(OwnerPowerResult ?? OperationResult<LiveThermalSnapshot>.Fail("UNSUPPORTED_OPERATION", "Simulation not configured."));
+
+    public Task<OperationResult<CoolingCycleResult>> RunCoolingCycleAsync(CancellationToken stop) =>
+        Task.FromResult(CoolingResult ?? OperationResult<CoolingCycleResult>.Fail("COOLING_UNAVAILABLE", "Simulation not configured."));
 
     public Task<MachineIdentity> GetMachineIdentityAsync(CancellationToken ct = default) => Task.FromResult(Machine);
 

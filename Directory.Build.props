@@ -1,0 +1,10 @@
+<Project>
+  <!-- Shared settings for every project in this repository. -->
+
+  <!-- Release builds and publishes ship without debug symbols (.pdb).
+       Debug builds keep full symbols for local debugging. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+</Project>

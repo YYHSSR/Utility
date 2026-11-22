@@ -50,8 +50,7 @@ public sealed record DriverPackageInspection(
     string? FileDescription,
     string? FileVersion,
     string? CompanyName,
-    string? PeArchitecture,
-    bool SupportsCurrentOs);
+    string? PeArchitecture);
 
 /// <summary>Applicability and provenance verdict for a local driver package.</summary>
 public sealed record DriverPackageDecision(

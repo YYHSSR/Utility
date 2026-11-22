@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using Utility.Core.Models;
 using Utility.Core.Services;
+using Utility.Platform.Lenovo;
 using Utility.Platform.Native;
 
 namespace Utility.Platform.Providers;
@@ -12,12 +13,17 @@ namespace Utility.Platform.Providers;
 /// </summary>
 public sealed class WindowsTelemetryProvider : ITelemetryProvider, IDisposable
 {
-    private SystemMetricsInterop.CpuTimeSample? _lastCpuSample;
-    private PerformanceCounter? _diskActiveCounter;
-    private PerformanceCounter? _diskBytesCounter;
-    private bool _countersInitialized;
+    private SystemMetricsInterop.CpuTimeSample? _lastCpuSample = SystemMetricsInterop.SampleCpuTimes();
+    private readonly PerformanceQuery _counters = new();
+    private readonly NvidiaTelemetry _nvidia = new();
+    private readonly object _nativeLock = new();
+    private bool _disposed;
+    private IReadOnlyList<DiskCapacityInfo> _diskCapacities = [];
+    private DateTimeOffset _nextDiskCapacityRefresh;
+    private DateTimeOffset _nextNvmlAttempt;
+    private readonly bool _elevated = LenovoWmiProvider.IsProcessElevated();
 
-    public async Task<TelemetrySnapshot> ReadSnapshotAsync(bool allowWakeDgpu, CancellationToken ct = default)
+    public async Task<TelemetrySnapshot> ReadSnapshotAsync(bool allowWakeDgpu, CancellationToken ct = default, bool pauseDgpu = false)
     {
         var now = DateTimeOffset.UtcNow;
         var isOnBattery = !Win32BatteryInterop.IsAcOnlineQuick();
@@ -38,15 +44,20 @@ public sealed class WindowsTelemetryProvider : ITelemetryProvider, IDisposable
         }
         _lastCpuSample = currentCpu;
 
-        // CPU package temperature is not exposed cleanly to standard users via documented Windows APIs;
-        // never mislabel generic ACPI thermal zone as CPU package temperature.
-        var cpuTemp = new SensorReading<double>(
-            null,
-            "C",
-            SensorStatus.Unavailable,
-            "Unavailable (unprivileged)",
-            now,
-            "ACPI thermal zone excluded; requires verified CPU package telemetry.");
+        // CPU temperature and fan RPM come from Lenovo firmware WMI (LENOVO_OTHER_METHOD), which Windows
+        // only exposes to administrators. Standard users get RequiresElevation, never a guessed value;
+        // the generic ACPI thermal zone is not mislabelled as CPU temperature.
+        // The WMI call runs off the UI thread (this method is entered from a dispatcher timer).
+        var elevated = _elevated;
+        var firmware = elevated
+            ? await Task.Run(LenovoWmiProvider.TryReadFirmwareSensors, ct).ConfigureAwait(false)
+            : null;
+        const string firmwareSource = "LENOVO_OTHER_METHOD";
+        var missingStatus = elevated ? SensorStatus.Unavailable : SensorStatus.RequiresElevation;
+        var cpuTemp = firmware?.CpuTemperatureC is int cpuC
+            ? new SensorReading<double>(cpuC, "C", SensorStatus.Valid, firmwareSource, now)
+            : new SensorReading<double>(null, "C", missingStatus, firmwareSource, now,
+                elevated ? "Firmware returned no valid CPU temperature." : "Requires administrator rights.");
 
         // Physical memory usage.
         var mem = SystemMetricsInterop.ReadMemoryUsage();
@@ -61,20 +72,27 @@ public sealed class WindowsTelemetryProvider : ITelemetryProvider, IDisposable
             : new SensorReading<double>(null, "%", SensorStatus.Unavailable, "Win32 GlobalMemoryStatusEx", now);
 
         // Disk capacity (separate from disk activity).
-        var disks = ReadDiskCapacities();
-        var (diskPct, diskThroughput) = ReadDiskActivity(now);
+        if (now >= _nextDiskCapacityRefresh)
+        {
+            _diskCapacities = ReadDiskCapacities();
+            _nextDiskCapacityRefresh = now.AddSeconds(30);
+        }
+        (double? DiskTime, double? DiskBytes, double? PackageMilliwatts) counters;
+        lock (_nativeLock)
+            counters = _disposed ? default : _counters.Read();
+        SensorReading<double> Counter(double? value, string unit, string source) =>
+            new(value, unit, value.HasValue ? SensorStatus.Valid : SensorStatus.Unavailable, source, now);
+        var diskPct = Counter(counters.DiskTime is double active ? Math.Clamp(active, 0, 100) : null, "%", "PDH PhysicalDisk");
+        var diskThroughput = Counter(counters.DiskBytes / 1048576d, "MB/s", "PDH PhysicalDisk");
 
         // NVIDIA RTX telemetry via trusted nvidia-smi.exe.
-        var gpu = await ReadNvidiaTelemetryAsync(isOnBattery, allowWakeDgpu, now, ct).ConfigureAwait(false);
+        var gpu = await ReadNvidiaTelemetryAsync(isOnBattery, allowWakeDgpu, pauseDgpu, now, ct).ConfigureAwait(false);
 
-        // Lenovo fan RPM requires elevated WMI access; report Unavailable rather than guessing 0 RPM.
-        var fanUnavailable = new SensorReading<int>(
-            null,
-            "RPM",
-            SensorStatus.Unavailable,
-            "LENOVO_GAMEZONE_DATA",
-            now,
-            "Requires elevated Lenovo WMI read.");
+        // Fan RPM: same firmware source and privilege rule as CPU temperature; never guess 0 RPM.
+        SensorReading<int> Fan(int? rpm) => rpm is int value
+            ? new SensorReading<int>(value, "RPM", SensorStatus.Valid, firmwareSource, now)
+            : new SensorReading<int>(null, "RPM", missingStatus, firmwareSource, now,
+                elevated ? "Firmware returned no valid fan speed." : "Requires administrator rights.");
 
         return new TelemetrySnapshot(
             CpuUtilization: cpuUtil,
@@ -84,7 +102,7 @@ public sealed class WindowsTelemetryProvider : ITelemetryProvider, IDisposable
             MemoryUsedPercent: memPct,
             DiskActivePercent: diskPct,
             DiskThroughputMbPerSec: diskThroughput,
-            DiskCapacities: disks,
+            DiskCapacities: _diskCapacities,
             GpuName: gpu.Name,
             GpuUtilization: gpu.Utilization,
             GpuTemperature: gpu.Temperature,
@@ -92,10 +110,13 @@ public sealed class WindowsTelemetryProvider : ITelemetryProvider, IDisposable
             GpuMemoryUsedMb: gpu.MemoryUsedMb,
             GpuMemoryTotalMb: gpu.MemoryTotalMb,
             GpuPowerState: gpu.PowerState,
-            CpuFanRpm: fanUnavailable,
-            GpuFanRpm: fanUnavailable,
+            CpuFanRpm: Fan(firmware?.CpuFanRpm),
+            GpuFanRpm: Fan(firmware?.GpuFanRpm),
             IsOnBattery: isOnBattery,
-            CapturedAtUtc: now);
+            CapturedAtUtc: now)
+        {
+            CpuPowerWatts = Counter(counters.PackageMilliwatts is > 0 and < 500000 ? counters.PackageMilliwatts / 1000 : null, "W", "PDH Energy Meter")
+        };
     }
 
     public Task<FeatureCapability> ProbeCapabilityAsync(CancellationToken ct = default)
@@ -107,9 +128,9 @@ public sealed class WindowsTelemetryProvider : ITelemetryProvider, IDisposable
             var details = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["CpuMemorySource"] = "Win32 GetSystemTimes + GlobalMemoryStatusEx",
-                ["DiskSource"] = "DriveInfo + PhysicalDisk PerformanceCounter",
+                ["DiskSource"] = "DriveInfo + PhysicalDisk PDH",
                 ["NvidiaSmiPath"] = smiPath ?? "NotFound",
-                ["CpuTempAndFanRpm"] = "Unavailable in standard-user mode (requires elevated WMI or verified sensor)"
+                ["CpuTempAndFanRpm"] = "LENOVO_OTHER_METHOD (administrator only)"
             };
 
             return new FeatureCapability(
@@ -117,50 +138,11 @@ public sealed class WindowsTelemetryProvider : ITelemetryProvider, IDisposable
                 ReadAvailable: true,
                 WriteAvailable: false,
                 Status: CapabilityAvailability.Available,
-                Reason: smiPath is not null
-                    ? "System metrics and NVIDIA telemetry are available; fan RPM and CPU package temp require verified elevated/sensor access."
-                    : "System metrics available; nvidia-smi not found.",
-                Provider: "Win32 + PerformanceCounter + nvidia-smi",
+                Reason: "Windows system metrics available. NVIDIA readings use the installed NVML driver or nvidia-smi. Firmware sensors require administrator access.",
+                Provider: "Win32 + PDH + NVML / nvidia-smi",
                 LastCheckedUtc: now,
                 Details: details);
         }, ct);
-    }
-
-    private (SensorReading<double> ActivePct, SensorReading<double> ThroughputMbPerSec) ReadDiskActivity(DateTimeOffset now)
-    {
-        try
-        {
-            if (!_countersInitialized)
-            {
-                _countersInitialized = true;
-                _diskActiveCounter = new PerformanceCounter("PhysicalDisk", "% Disk Time", "_Total", readOnly: true);
-                _diskBytesCounter = new PerformanceCounter("PhysicalDisk", "Disk Bytes/sec", "_Total", readOnly: true);
-                _ = _diskActiveCounter.NextValue();
-                _ = _diskBytesCounter.NextValue();
-                return (
-                    new SensorReading<double>(null, "%", SensorStatus.Stale, "PerformanceCounter PhysicalDisk", now, "Warming up counter"),
-                    new SensorReading<double>(null, "MB/s", SensorStatus.Stale, "PerformanceCounter PhysicalDisk", now, "Warming up counter"));
-            }
-
-            if (_diskActiveCounter is null || _diskBytesCounter is null)
-            {
-                return (
-                    new SensorReading<double>(null, "%", SensorStatus.Unavailable, "PerformanceCounter PhysicalDisk", now),
-                    new SensorReading<double>(null, "MB/s", SensorStatus.Unavailable, "PerformanceCounter PhysicalDisk", now));
-            }
-
-            var pct = Math.Clamp(_diskActiveCounter.NextValue(), 0f, 100f);
-            var mbps = Math.Max(0f, _diskBytesCounter.NextValue()) / (1024.0 * 1024.0);
-            return (
-                new SensorReading<double>(Math.Round(pct, 1), "%", SensorStatus.Valid, "PerformanceCounter PhysicalDisk", now),
-                new SensorReading<double>(Math.Round(mbps, 2), "MB/s", SensorStatus.Valid, "PerformanceCounter PhysicalDisk", now));
-        }
-        catch (Exception ex)
-        {
-            return (
-                new SensorReading<double>(null, "%", SensorStatus.Error, "PerformanceCounter PhysicalDisk", now, ex.Message),
-                new SensorReading<double>(null, "MB/s", SensorStatus.Error, "PerformanceCounter PhysicalDisk", now, ex.Message));
-        }
     }
 
     private static IReadOnlyList<DiskCapacityInfo> ReadDiskCapacities()
@@ -168,21 +150,24 @@ public sealed class WindowsTelemetryProvider : ITelemetryProvider, IDisposable
         var list = new List<DiskCapacityInfo>();
         foreach (var drive in DriveInfo.GetDrives())
         {
-            if (drive.DriveType != DriveType.Fixed || !drive.IsReady)
+            try
             {
-                continue;
+                if (drive.DriveType != DriveType.Fixed || !drive.IsReady)
+                    continue;
+                var total = drive.TotalSize;
+                var free = drive.AvailableFreeSpace;
+                list.Add(new DiskCapacityInfo(drive.Name.TrimEnd('\\'), drive.VolumeLabel, total, Math.Max(0, total - free), free));
             }
-
-            var total = drive.TotalSize;
-            var free = drive.AvailableFreeSpace;
-            var used = Math.Max(0L, total - free);
-            list.Add(new DiskCapacityInfo(drive.Name.TrimEnd('\\'), drive.VolumeLabel, total, used, free));
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Other volumes and sensors remain readable if a drive is detached or locked.
+            }
         }
 
         return list;
     }
 
-    private static async Task<(
+    private async Task<(
         string? Name,
         SensorReading<double> Utilization,
         SensorReading<double> Temperature,
@@ -192,13 +177,27 @@ public sealed class WindowsTelemetryProvider : ITelemetryProvider, IDisposable
         string? PowerState)> ReadNvidiaTelemetryAsync(
         bool isOnBattery,
         bool allowWakeDgpu,
+        bool pauseDgpu,
         DateTimeOffset now,
         CancellationToken ct)
     {
-        if (isOnBattery && !allowWakeDgpu)
+        if (pauseDgpu || (isOnBattery && !allowWakeDgpu))
         {
-            var paused = new SensorReading<double>(null, string.Empty, SensorStatus.PausedOnBattery, "nvidia-smi", now, "Paused on battery to avoid waking dGPU; click Manual Refresh to query.");
+            lock (_nativeLock)
+                _nvidia.Dispose();
+            var paused = new SensorReading<double>(null, string.Empty,
+                pauseDgpu ? SensorStatus.PausedInIntegratedMode : SensorStatus.PausedOnBattery, "nvidia-smi", now);
             return (null, paused with { Unit = "%" }, paused with { Unit = "C" }, paused with { Unit = "W" }, paused with { Unit = "MB" }, paused with { Unit = "MB" }, null);
+        }
+
+        if (now >= _nextNvmlAttempt)
+        {
+            NvidiaSample? sample;
+            lock (_nativeLock)
+                sample = _disposed ? null : _nvidia.TryRead(now);
+            if (sample is { } direct)
+                return (direct.Name, direct.Utilization, direct.Temperature, direct.PowerWatts, direct.MemoryUsedMb, direct.MemoryTotalMb, direct.PowerState);
+            _nextNvmlAttempt = now.AddSeconds(30);
         }
 
         var smiPath = FindTrustedNvidiaSmiPath();
@@ -234,7 +233,25 @@ public sealed class WindowsTelemetryProvider : ITelemetryProvider, IDisposable
 
             var outputTask = proc.StandardOutput.ReadToEndAsync(timeoutCts.Token);
             var errTask = proc.StandardError.ReadToEndAsync(timeoutCts.Token);
-            await proc.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+            try
+            {
+                await proc.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Disposing a Process only releases its handle; stop the timed-out child.
+                try
+                {
+                    if (!proc.HasExited)
+                        proc.Kill();
+                }
+                catch (InvalidOperationException)
+                {
+                    // The process exited before it could be stopped.
+                }
+
+                throw;
+            }
             var stdout = (await outputTask.ConfigureAwait(false)).Trim();
             var stderr = (await errTask.ConfigureAwait(false)).Trim();
 
@@ -265,6 +282,10 @@ public sealed class WindowsTelemetryProvider : ITelemetryProvider, IDisposable
                 ParseNvidiaMetric(cols[5], "MB", now),
                 cols[6]);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (OperationCanceledException)
         {
             var stale = new SensorReading<double>(null, string.Empty, SensorStatus.Stale, "nvidia-smi", now, "nvidia-smi query timed out.");
@@ -284,7 +305,7 @@ public sealed class WindowsTelemetryProvider : ITelemetryProvider, IDisposable
             return new SensorReading<double>(null, unit, SensorStatus.Unavailable, "nvidia-smi", now, raw);
         }
 
-        if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var val))
+        if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var val) && double.IsFinite(val))
         {
             return new SensorReading<double>(val, unit, SensorStatus.Valid, "nvidia-smi", now);
         }
@@ -304,9 +325,21 @@ public sealed class WindowsTelemetryProvider : ITelemetryProvider, IDisposable
         return File.Exists(pfPath) ? pfPath : null;
     }
 
+    public void ReleaseIdleResources()
+    {
+        lock (_nativeLock)
+        {
+            _nvidia.Dispose();
+            _counters.Dispose();
+        }
+    }
+
     public void Dispose()
     {
-        _diskActiveCounter?.Dispose();
-        _diskBytesCounter?.Dispose();
+        lock (_nativeLock)
+        {
+            _disposed = true;
+            ReleaseIdleResources();
+        }
     }
 }

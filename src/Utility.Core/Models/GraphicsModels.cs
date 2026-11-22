@@ -26,4 +26,7 @@ public sealed record GraphicsStatusSnapshot(
     IReadOnlyList<GraphicsModeOption> SupportedModes,
     bool IsVerifiedLiveRead,
     string StatusNote,
-    DateTimeOffset CapturedAtUtc);
+    DateTimeOffset CapturedAtUtc)
+{
+    public string? BootSession { get; init; }
+}

@@ -9,7 +9,8 @@ public enum OperationStatus
     CancelledByUser = 3,
     RolledBack = 4,
     PartiallyFailed = 5,
-    FailedBeforeWrite = 6
+    FailedBeforeWrite = 6,
+    Acknowledged = 7
 }
 
 /// <summary>Persisted settings stored under %LOCALAPPDATA%\Utility\settings.json.</summary>
@@ -20,6 +21,7 @@ public sealed record AppSettingsState
     public IReadOnlyList<PerformanceProfile> Profiles { get; init; } = ProfileSeedFactory.CreateEditableSeeds();
     public IReadOnlyList<FieldHardwareContract> FieldContracts { get; init; } = ProfileSeedFactory.CreateDefaultFieldContracts();
     public GraphicsRoutingMode? PendingGraphicsMode { get; init; }
+    public string? PendingGraphicsBootSession { get; init; }
     public GraphicsRoutingMode? LastVerifiedGraphicsMode { get; init; }
     public bool PauseGpuPollingOnBattery { get; init; } = true;
     public bool ConfirmGraphicsRecoveryPath { get; init; }

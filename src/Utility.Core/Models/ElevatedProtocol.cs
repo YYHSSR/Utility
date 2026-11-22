@@ -5,27 +5,42 @@ public enum ElevatedOperation
 {
     ProbeCapabilities = 1,
     ReadThermalSnapshot = 2,
-    SetThermalMode = 3,
-    ApplyPowerFields = 4,
     ReadFanTables = 5,
-    ApplyFanTables = 6,
-    RestoreDefaultFanTables = 7,
     ReadGraphicsMode = 8,
-    SetGraphicsMode = 9,
-    ReadBatteryConservation = 10,
-    SetBatteryConservation = 11
+    ApplyOwnerPowerPreset = 12,
+    RunCoolingCycle = 13,
+    MonitorFirmwareSensors = 14,
+    SetGraphicsMode = 15,
+    SetFanSpeedLevels = 16,
+    ListRestorePoints = 17,
+    DeleteRestorePoints = 18,
+    SetStartupEntryEnabled = 19
 }
 
-/// <summary>Typed IPC request sent over an ACL-restricted named pipe to Utility.ElevatedWorker.</summary>
+/// <summary>One Windows System Restore point (rootdefault:SystemRestore).</summary>
+public sealed record RestorePointInfo(uint SequenceNumber, string Description, DateTime CreatedUtc);
+
+/// <summary>Restore points plus the shadow-copy space they use on the system drive (null when unknown).</summary>
+public sealed record RestorePointList(IReadOnlyList<RestorePointInfo> Points, long? UsedBytes);
+
+public enum CoolingStopReason { TemperatureReached, TimeLimit, Stopped, AcDisconnected, SensorUnavailable }
+
+public sealed record CoolingTemperatures(int? CpuC, int? GpuC);
+
+public sealed record CoolingCycleResult(CoolingTemperatures Start, CoolingTemperatures End, CoolingStopReason Reason);
+
+/// <summary>Typed IPC request with an optional owner profile ID for the verified power switch.</summary>
 public sealed record ElevatedRequest
 {
     public required string AuthToken { get; init; }
     public required ElevatedOperation Operation { get; init; }
-    public ThermalMode? ThermalMode { get; init; }
-    public ProfilePowerSettings? PowerSettings { get; init; }
-    public FanCurveProfile? FanCurve { get; init; }
+    public string? OwnerProfileId { get; init; }
     public GraphicsRoutingMode? GraphicsMode { get; init; }
-    public bool? ConservationEnabled { get; init; }
+    public int[]? FanLevels { get; init; }
+    public uint[]? RestorePointSequenceNumbers { get; init; }
+    /// <summary>StableId of an existing startup entry (re-enumerated by the worker, never a raw path).</summary>
+    public string? StartupEntryId { get; init; }
+    public bool? StartupEnabled { get; init; }
 }
 
 /// <summary>Typed IPC response returned by Utility.ElevatedWorker.</summary>
@@ -39,8 +54,7 @@ public sealed record ElevatedResponse
     public LiveThermalSnapshot? ThermalSnapshot { get; init; }
     public FanCurveProfile? FanCurve { get; init; }
     public GraphicsStatusSnapshot? GraphicsStatus { get; init; }
-    public BatteryChargeMode? BatteryChargeMode { get; init; }
-    public IReadOnlyDictionary<string, int?>? ReadBackPowerValues { get; init; }
-    public IReadOnlyList<string> AppliedFields { get; init; } = [];
-    public IReadOnlyList<string> FailedFields { get; init; } = [];
+    public CoolingCycleResult? CoolingCycle { get; init; }
+    public FirmwareSensorSample? FirmwareSensors { get; init; }
+    public RestorePointList? RestorePoints { get; init; }
 }

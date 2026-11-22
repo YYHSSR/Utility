@@ -18,7 +18,13 @@ public sealed record InstalledAppEntry(
     string Version,
     InstallScope Scope,
     string? PackageFamilyName,
-    bool SupportsWindowsAppsDeepLink);
+    bool SupportsWindowsAppsDeepLink)
+{
+    public DesktopUninstallRegistration? DesktopRegistration { get; init; }
+}
+
+public sealed record DesktopUninstallRegistration(
+    string RegistryKeyName, string? Command, string? InstallLocation, bool IsMsi, bool NoRemove);
 
 /// <summary>Origin of a Windows startup entry.</summary>
 public enum StartupEntrySource

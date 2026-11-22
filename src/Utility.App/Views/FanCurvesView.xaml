@@ -1,52 +1,167 @@
-<UserControl x:Class="Utility.App.Views.FanCurvesView"
+<UserControl x:Class="Utility.App.Views.FanCurvesView" Foreground="{StaticResource TextPrimaryBrush}"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:Utility.App.Localization">
+             xmlns:loc="clr-namespace:Utility.App.Localization"
+             xmlns:ctl="clr-namespace:Utility.App.Controls">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="0,0,8,0">
-            <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{loc:Tr FanHeader}" />
+        <StackPanel Margin="0,0,8,6">
+            <DockPanel Margin="0,0,0,18">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Tag="&#xEA18;" Content="{loc:Tr BtnReadFanTable}" Command="{Binding ReadFanTableCommand}" Margin="0,0,10,0" />
+                    <Button Style="{StaticResource PrimaryButtonStyle}" Tag="&#xE74E;" Content="{loc:Tr BtnSaveFanDraft}" Command="{Binding SaveFanDraftCommand}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <ContentControl Style="{StaticResource PageIconStyle}" Tag="&#xE9CA;" />
+                    <ctl:SelectableTextBlock Style="{StaticResource PageTitleStyle}" VerticalAlignment="Center" Text="{loc:Tr FanHeader}" />
+                </StackPanel>
+            </DockPanel>
+
+            <Border Style="{StaticResource NoticeWarningStyle}">
+                <DockPanel>
+                    <TextBlock Style="{StaticResource IconStyle}" Foreground="{StaticResource WarningBrush}" Text="&#xE7BA;" Margin="0,0,10,0" VerticalAlignment="Top" />
+                    <StackPanel>
+                        <ctl:SelectableTextBlock Foreground="{StaticResource WarningBrush}" FontWeight="SemiBold" Text="{Binding FanStatusBannerText}" TextWrapping="Wrap" />
+                        <ctl:SelectableTextBlock Foreground="{StaticResource NoticeWarningTextBrush}" Margin="0,3,0,0" Text="{loc:Tr MsgFanLevelHelp}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
 
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel>
-                    <TextBlock Foreground="{StaticResource WarningBrush}" FontWeight="SemiBold" Text="{Binding FanStatusBannerText}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                    <DockPanel Margin="0,0,0,8">
+                        <Button DockPanel.Dock="Right" Content="{loc:Tr BtnSaveFanCapture}"
+                                Command="{Binding SaveFanCaptureCommand}" ToolTip="{loc:Tr FanCaptureReadHint}" />
+                        <ctl:SelectableTextBlock Style="{StaticResource CardHeaderStyle}" Text="{loc:Tr FanCaptureTitle}" VerticalAlignment="Center" />
+                    </DockPanel>
+                    <ctl:SelectableTextBlock Style="{StaticResource MutedLabelStyle}" Text="{Binding FanCaptureStatus}"
+                               TextWrapping="Wrap" Margin="0,0,0,8" />
+                    <DataGrid ItemsSource="{Binding FanStages}" AutoGenerateColumns="False" IsReadOnly="True"
+                              CanUserAddRows="False" CanUserSortColumns="False" HeadersVisibility="Column">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="{loc:Tr FanStageNumber}" Binding="{Binding Stage}" Width="0.65*" />
+                            <DataGridTextColumn Header="{loc:Tr FanStageLevel}" Binding="{Binding SpeedLevel}" Width="0.85*" />
+                            <DataGridTextColumn Header="{loc:Tr FanStageCpu}" Binding="{Binding CpuTemperatureC}" Width="*" />
+                            <DataGridTextColumn Header="{loc:Tr FanStageGpu}" Binding="{Binding GpuTemperatureC}" Width="*" />
+                            <DataGridTextColumn Header="{loc:Tr FanStageAux}" Binding="{Binding AuxiliaryCpuTemperatureC, TargetNullValue=—}" Width="1.3*" />
+                            <DataGridTextColumn Header="{loc:Tr FanStageCpuRpm}" Binding="{Binding CpuRpm}" Width="1.3*" />
+                            <DataGridTextColumn Header="{loc:Tr FanStageGpuRpm}" Binding="{Binding GpuRpm}" Width="1.3*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <ctl:SelectableTextBlock Style="{StaticResource MutedLabelStyle}" Text="{loc:Tr LblFanLevelInput}" Margin="0,12,0,4" />
                     <WrapPanel>
-                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="{loc:Tr BtnReadFanTable}" Command="{Binding ReadFanTableCommand}" Margin="0,0,8,6" />
-                        <Button Content="{loc:Tr MsgFanAddPoint}" Command="{Binding AddFanPointCommand}" Margin="0,0,8,6" />
-                        <Button Content="{loc:Tr BtnApplyFanCurve}" Command="{Binding ApplyFanCurveCommand}" Margin="0,0,8,6" />
-                        <Button Content="{loc:Tr BtnRestoreFanDefault}" Command="{Binding RestoreDefaultFanCommand}" Margin="0,0,8,6" />
+                        <TextBox MinWidth="210" Margin="0,0,10,6" Text="{Binding FanLevelText, UpdateSourceTrigger=PropertyChanged}" />
+                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="{loc:Tr BtnApplyFanLevels}"
+                                Command="{Binding ApplyFanLevelsCommand}" Margin="0,0,10,6" />
+                        <Button Content="{loc:Tr BtnRestoreFanReference}" Command="{Binding ApplyFanLevelsCommand}"
+                                CommandParameter="restore" Margin="0,0,0,6" />
                     </WrapPanel>
                 </StackPanel>
             </Border>
 
+            <!-- Channel settings -->
             <Border Style="{StaticResource CardBorderStyle}">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="1.1*" />
-                        <ColumnDefinition Width="1.2*" />
-                    </Grid.ColumnDefinitions>
-
-                    <DataGrid Grid.Column="0" ItemsSource="{Binding FanPoints}" IsReadOnly="False" CanUserAddRows="False" MaxHeight="240" Margin="0,0,12,0">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="Temp (C)" Binding="{Binding TemperatureC, UpdateSourceTrigger=PropertyChanged}" Width="*" />
-                            <DataGridTextColumn Header="Speed" Binding="{Binding FanSpeedValue, UpdateSourceTrigger=PropertyChanged}" Width="*" />
-                            <DataGridTextColumn Header="Unit" Binding="{Binding SpeedUnit}" IsReadOnly="True" Width="0.7*" />
-                        </DataGrid.Columns>
-                    </DataGrid>
-
-                    <StackPanel Grid.Column="1">
-                        <Border Background="{StaticResource BgPrimaryBrush}" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1" CornerRadius="6" Padding="10">
-                            <Canvas Width="420" Height="180" ClipToBounds="True">
-                                <Line X1="0" Y1="45" X2="420" Y2="45" Stroke="#242C3D" StrokeThickness="1" />
-                                <Line X1="0" Y1="90" X2="420" Y2="90" Stroke="#242C3D" StrokeThickness="1" />
-                                <Line X1="0" Y1="135" X2="420" Y2="135" Stroke="#242C3D" StrokeThickness="1" />
-                                <Polyline Points="{Binding FanPreviewPoints}" Stroke="{StaticResource AccentBrush}" StrokeThickness="2.5" />
-                            </Canvas>
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,14">
+                        <Border DockPanel.Dock="Right" Style="{StaticResource SegmentHostStyle}">
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton Style="{StaticResource SegmentStyle}" GroupName="FanProfile" Content="{loc:Tr ProfileDailyName}" Tag="&#xE706;"
+                                             IsChecked="{Binding SelectedProfileId, Mode=OneWay, Converter={StaticResource EqualsToBool}, ConverterParameter=daily}"
+                                             Command="{Binding SelectProfileCommand}" CommandParameter="daily" />
+                                <RadioButton Style="{StaticResource SegmentStyle}" GroupName="FanProfile" Content="{loc:Tr ProfileGamingName}" Tag="&#xE7FC;"
+                                             IsChecked="{Binding SelectedProfileId, Mode=OneWay, Converter={StaticResource EqualsToBool}, ConverterParameter=gaming}"
+                                             Command="{Binding SelectProfileCommand}" CommandParameter="gaming" />
+                            </StackPanel>
                         </Border>
-                        <TextBlock Margin="0,8,0,0" Style="{StaticResource MutedLabelStyle}" Text="{Binding FanValidationText}" TextWrapping="Wrap" />
-                        <Button Margin="0,8,0,0" HorizontalAlignment="Left" Content="Preview" Command="{Binding ValidateFanPreviewCommand}" />
-                    </StackPanel>
-                </Grid>
+                        <ctl:SelectableTextBlock Style="{StaticResource CardHeaderStyle}" Margin="0" VerticalAlignment="Center" Text="{loc:Tr LblChannelSettings}" />
+                    </DockPanel>
+                    <WrapPanel>
+                        <StackPanel Margin="0,0,14,8">
+                            <ctl:SelectableTextBlock Style="{StaticResource CaptionStyle}" Margin="0,0,0,5" Text="{loc:Tr FanChannelLabel}" />
+                            <ComboBox Width="160" ItemsSource="{Binding FanChannels}" SelectedItem="{Binding SelectedFanChannel}" DisplayMemberPath="Name" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,14,8">
+                            <ctl:SelectableTextBlock Style="{StaticResource CaptionStyle}" Margin="0,0,0,5" Text="{loc:Tr ColName}" />
+                            <TextBox Width="150" Height="32" Text="{Binding SelectedFanChannel.Name}" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,14,8">
+                            <ctl:SelectableTextBlock Style="{StaticResource CaptionStyle}" Margin="0,0,0,5" Text="{loc:Tr FanSensorLabel}" />
+                            <TextBox Width="150" Height="32" Text="{Binding SelectedFanChannel.SensorName}" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,14,8">
+                            <ctl:SelectableTextBlock Style="{StaticResource CaptionStyle}" Margin="0,0,0,5" Text="{loc:Tr LblSpeedUnit}" />
+                            <ComboBox Width="90" ItemsSource="{Binding FanSpeedUnits}" SelectedItem="{Binding SelectedFanChannel.SpeedUnit}" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,0,8" VerticalAlignment="Bottom" Orientation="Horizontal">
+                            <Button Tag="&#xE710;" Content="{loc:Tr BtnAddFanChannel}" Command="{Binding AddFanChannelCommand}" Height="32" />
+                        </StackPanel>
+                    </WrapPanel>
+                </StackPanel>
             </Border>
+
+            <!-- Points + preview -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="300" />
+                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource CardBorderStyle}">
+                    <DockPanel>
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                            <Button DockPanel.Dock="Right" Style="{StaticResource GhostButtonStyle}" Tag="&#xE710;" Content="{loc:Tr MsgFanAddPoint}" Command="{Binding AddFanPointCommand}" />
+                            <ctl:SelectableTextBlock Style="{StaticResource CardHeaderStyle}" Margin="0" VerticalAlignment="Center" Text="{loc:Tr LblCurvePoints}" />
+                        </DockPanel>
+                        <DataGrid ItemsSource="{Binding SelectedFanChannel.Points}" IsReadOnly="False" CanUserAddRows="False" CanUserSortColumns="False" Height="240">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="{loc:Tr ColTempC}" Binding="{Binding TemperatureC, UpdateSourceTrigger=PropertyChanged}" Width="*" />
+                                <DataGridTextColumn Header="{loc:Tr ColSpeed}" Binding="{Binding FanSpeedValue, UpdateSourceTrigger=PropertyChanged}" Width="*" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </Border>
+
+                <Border Grid.Column="2" Style="{StaticResource CardBorderStyle}">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,10">
+                            <Button DockPanel.Dock="Right" Tag="&#xE73E;" Content="{loc:Tr BtnPreviewCurve}" Command="{Binding ValidateFanPreviewCommand}" />
+                            <ctl:SelectableTextBlock Style="{StaticResource CardHeaderStyle}" Margin="0" VerticalAlignment="Center" Text="{loc:Tr LblCurvePreview}" />
+                        </DockPanel>
+                        <Border Background="{StaticResource ChartBgBrush}" CornerRadius="10" Padding="14,12">
+                            <Viewbox Stretch="Uniform" StretchDirection="Both" MaxHeight="230">
+                                <Canvas Width="420" Height="180" ClipToBounds="False">
+                                    <Line X1="0" Y1="0" X2="420" Y2="0" Stroke="{StaticResource ChartGridBrush}" StrokeThickness="1" />
+                                    <Line X1="0" Y1="45" X2="420" Y2="45" Stroke="{StaticResource ChartGridBrush}" StrokeThickness="1" />
+                                    <Line X1="0" Y1="90" X2="420" Y2="90" Stroke="{StaticResource ChartGridBrush}" StrokeThickness="1" />
+                                    <Line X1="0" Y1="135" X2="420" Y2="135" Stroke="{StaticResource ChartGridBrush}" StrokeThickness="1" />
+                                    <Line X1="0" Y1="180" X2="420" Y2="180" Stroke="{StaticResource ChartAxisBrush}" StrokeThickness="1" />
+                                    <Line X1="105" Y1="0" X2="105" Y2="180" Stroke="{StaticResource ChartGridBrush}" StrokeThickness="1" StrokeDashArray="3 3" />
+                                    <Line X1="210" Y1="0" X2="210" Y2="180" Stroke="{StaticResource ChartGridBrush}" StrokeThickness="1" StrokeDashArray="3 3" />
+                                    <Line X1="315" Y1="0" X2="315" Y2="180" Stroke="{StaticResource ChartGridBrush}" StrokeThickness="1" StrokeDashArray="3 3" />
+                                    <Polyline Points="{Binding FanPreviewPoints}" StrokeThickness="2.5" StrokeLineJoin="Round">
+                                        <Polyline.Stroke>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                <GradientStop Offset="0" Color="#22D3EE" />
+                                                <GradientStop Offset="0.6" Color="#2F6BFF" />
+                                                <GradientStop Offset="1" Color="#EF4444" />
+                                            </LinearGradientBrush>
+                                        </Polyline.Stroke>
+                                    </Polyline>
+                                </Canvas>
+                            </Viewbox>
+                        </Border>
+                        <DockPanel Margin="2,6,2,0">
+                            <ctl:SelectableTextBlock DockPanel.Dock="Right" Style="{StaticResource CaptionStyle}" Text="100 °C" />
+                            <ctl:SelectableTextBlock Style="{StaticResource CaptionStyle}" Text="30 °C" />
+                        </DockPanel>
+                        <ctl:SelectableTextBlock Margin="0,10,0,0" Style="{StaticResource MutedLabelStyle}" Text="{Binding FanValidationText}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Expander Header="{loc:Tr FirmwareFanTableLabel}" Margin="0,0,0,8">
+                <ctl:SelectableTextBlock Text="{Binding FirmwareFanTableText}" TextWrapping="Wrap" FontFamily="Cascadia Mono, Consolas" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" />
+            </Expander>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

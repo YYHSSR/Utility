@@ -1,5 +1,7 @@
 namespace Utility.Core.Models;
 
+public sealed record FirmwareSensorSample(int? CpuTemperatureC, int? CpuFanRpm, int? GpuFanRpm);
+
 /// <summary>Distinguishes genuine zero measurements from missing, stale, or failed readings.</summary>
 public enum SensorStatus
 {
@@ -8,7 +10,10 @@ public enum SensorStatus
     Stale = 2,
     Error = 3,
     Sleeping = 4,
-    PausedOnBattery = 5
+    PausedOnBattery = 5,
+    /// <summary>The sensor exists but Windows only exposes it to administrators.</summary>
+    RequiresElevation = 6,
+    PausedInIntegratedMode = 7
 }
 
 /// <summary>Typed sensor value wrapper carrying explicit availability and provenance metadata.</summary>
@@ -53,4 +58,8 @@ public sealed record TelemetrySnapshot(
     SensorReading<int> CpuFanRpm,
     SensorReading<int> GpuFanRpm,
     bool IsOnBattery,
-    DateTimeOffset CapturedAtUtc);
+    DateTimeOffset CapturedAtUtc)
+{
+    /// <summary>CPU package power (Windows Energy Meter / RAPL). Null when the provider does not supply it.</summary>
+    public SensorReading<double>? CpuPowerWatts { get; init; }
+}

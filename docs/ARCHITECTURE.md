@@ -1,18 +1,10 @@
-# Utility Architecture
+# Utility architecture
 
-## Solution Structure
+- **Utility.Core** contains the profiles, draft validation, JSON state store, and leftover and package classification. Simulated providers exercise write sequencing as a separate test layer.
+- **Utility.Platform** reads Windows inventory and hardware. On 83JJ / PTCN18WW, it also uses EnergyDrv to apply and read back charge policy and Lenovo WMI to apply and read back ten custom fan speed levels.
+- **Utility.ElevatedWorker** accepts typed Lenovo operations. Both ends verify the named pipe peer's process ID. The pipe excludes network clients and uses a one-time token. CPU temperature and fan RPM use a separate read-only session that ends when the app closes.
+- **Utility.App** runs as the invoking user. Profile and fan draft saves are serialized within the window. Telemetry takes one sample at a time and pauses when the dashboard is hidden. Graphics requests record the Windows boot session so the app can compare the requested route with the active route after restart.
 
-- **Utility.Core** (`net10.0-windows`): Pure domain models, validation logic, atomic JSON state store, hardware write coordinator, read-only leftover classifier, and driver applicability evaluator. Has zero UI or privileged OS dependencies so all core rules are unit-tested with simulated providers.
-- **Utility.Platform** (`net10.0-windows`): Windows and Lenovo hardware integration (`Win32BatteryInterop`, `EnergyDrvInterop`, `PowerSchemeInterop`, `SystemMetricsInterop`, `WinTrustInterop`, `LenovoWmiProvider`, `ElevatedWorkerClient`, and Windows inventory providers).
-- **Utility.ElevatedWorker** (`WinExe`, `requireAdministrator`): Minimal privileged helper bundled alongside `Utility.exe`. Accepts only `--pipe <name> --token <hex>` (or `--probe-report <path>`), validates `LENOVO 83JJ` identity and live `LENOVO_CAPABILITY_DATA_01` bounds at the privileged boundary, and executes only the closed `ElevatedOperation` enum.
-- **Utility.App** (`WinExe`, WPF): Standard-user (`asInvoker`) desktop UI defaulting to Simplified Chinese (`zh-CN` via `Strings.zh-CN.resx`). Pauses fast telemetry polling when minimized/hidden and refreshes read-only state on power resume without reapplying profiles.
+On 83JJ / PTCN18WW, the power switch changes only the fields that differ between the two original profiles and applies reductions first. It verifies the entire power preset and fan table afterwards. Failure triggers a read-back of only the attempted changes and an original-state recovery attempt. The application keeps the journal open when the outcome cannot be verified. Windows and vendor installation links open their official workflows.
 
-## Privilege Boundary & Write Safety
-
-1. Standard-user operations run directly in `Utility.exe`:
-   - Win32 battery telemetry (`IOCTL_BATTERY_QUERY_INFORMATION`) and `\\.\EnergyDrv` (`0x831020F8`) conservation read/toggle.
-   - CPU/RAM/Disk metrics and `C:\Windows\System32\nvidia-smi.exe` GPU telemetry.
-   - Registry/AppX/TaskScheduler/Service software & leftover inventory and `Win32_PnPSignedDriver` driver inventory.
-   - `WinVerifyTrust` + SHA-256 verification of local official `.exe` driver packages.
-2. Privileged Lenovo WMI operations (`root\wmi` classes `LENOVO_GAMEZONE_DATA`, `LENOVO_OTHER_METHOD`, `LENOVO_CAPABILITY_DATA_01`, `LENOVO_FAN_TABLE_DATA`) trigger on-demand UAC via `ElevatedWorkerClient` over a `NamedPipeServerStream` secured with a `PipeSecurity` ACL restricted to the current user SID and `BuiltinAdministratorsSid` plus a per-session 256-bit random auth token.
-3. All profile writes serialize through `HardwareWriteCoordinator`, write an atomic `InProgress` journal record under `%LOCALAPPDATA%\Utility\operation-journal.json` before mutating hardware, perform post-write read-back verification, and roll back changed fields if a step fails midway.
+Read access, a recorded draft, and a passing simulated operation provide different evidence. Enable a write only after verifying target identity, field meanings and units, effective state, and recovery. [Named pipe APIs](https://learn.microsoft.com/en-us/windows/win32/ipc/pipe-functions) · [Windows trust API](https://learn.microsoft.com/en-us/windows/win32/api/wintrust/nf-wintrust-winverifytrust)

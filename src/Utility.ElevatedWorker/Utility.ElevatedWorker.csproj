@@ -8,11 +8,12 @@
     <AssemblyName>Utility.ElevatedWorker</AssemblyName>
     <Product>Utility</Product>
     <Company>Utility</Company>
-    <Version>0.1.0</Version>
+    <Version>0.4.8</Version>
     <ApplicationIcon>..\..\assets\Utility.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
     <ProjectReference Include="..\Utility.Core\Utility.Core.csproj" />
     <ProjectReference Include="..\Utility.Platform\Utility.Platform.csproj" />
   </ItemGroup>

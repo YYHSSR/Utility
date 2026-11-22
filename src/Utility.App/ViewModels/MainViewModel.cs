@@ -1,27 +1,17 @@
 using System.Collections.ObjectModel;
-using System.IO;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Windows;
 using System.Windows.Media;
-using Microsoft.Win32;
 using Utility.App.Localization;
 using Utility.Core.Models;
 using Utility.Core.Services;
 using Utility.Platform.Lenovo;
+using Utility.Platform.Native;
 
 namespace Utility.App.ViewModels;
 
 /// <summary>Main coordinator ViewModel backing Utility's single-window navigation and 7 features.</summary>
 public sealed class MainViewModel : ViewModelBase, IDisposable
 {
-    private static readonly JsonSerializerOptions ReportJsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Converters = { new JsonStringEnumConverter() }
-    };
-
     private readonly JsonStateStore _stateStore;
     private readonly ProfileValidationService _validator;
     private readonly IBatteryProvider _battery;
@@ -30,21 +20,35 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private readonly IDriverProvider _drivers;
     private readonly ILenovoHardwareControlProvider _hardware;
     private readonly HardwareWriteCoordinator _writeCoordinator;
-    private readonly System.Timers.Timer _telemetryTimer;
+    private readonly System.Windows.Threading.DispatcherTimer _telemetryTimer;
+    private readonly SemaphoreSlim _settingsSaveLock = new(1, 1);
+    private readonly SemaphoreSlim _telemetryGate = new(1, 1);
+    private readonly CancellationTokenSource _lifetime = new();
+    private bool _disposed;
+    private bool _initialUiReady, _isTargetLegion;
+    private readonly bool _isElevated = LenovoWmiProvider.IsProcessElevated();
+    private readonly SemaphoreSlim _nextSensorSample = new(0, 1);
+    private bool _monitorAttempted, _monitorRunning, _monitorHasSample;
+    private bool _batteryRefreshPending;
+    private long _nextBatteryTick;
+    private long _lastDetailTick, _lastSensorTick;
+    private SystemMetricsInterop.CpuTimeSample? _previousCpu = SystemMetricsInterop.SampleCpuTimes();
+    private readonly HashSet<int> _requestedInventoryPages = [];
 
     private AppSettingsState _settings = new();
-    private CapabilityReport? _latestCapabilityReport;
     private LiveThermalSnapshot? _latestThermalSnapshot;
-    private IReadOnlyList<InstalledAppEntry> _allApps = [];
+    // Background thermal reads that started before this moment may show the pre-switch profile,
+    // so they are ignored to keep the dashboard and the tray on the state the last write verified.
+    private DateTimeOffset _lastHardwareWriteUtc = DateTimeOffset.MinValue;
     private IReadOnlyList<InstalledDriverEntry> _allDrivers = [];
-    private DriverPackageInspection? _inspectedPackage;
-    private DriverPackageDecision? _inspectedDecision;
+
     private string? _interruptedOpId;
     private bool _isWindowVisible = true;
+    private bool _isHardwareBusy;
+    private CancellationTokenSource? _coolingStop;
 
     private int _selectedNavIndex;
     private string _machineBannerText = "LENOVO 83JJ";
-    private string _privilegeBadgeText = Loc.Get("StatusStandardUser");
     private string _statusMessage = string.Empty;
     private bool _hasInterruptedOperation;
     private string _interruptedOperationSummary = string.Empty;
@@ -52,11 +56,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     // F1 Profiles
     private string _selectedProfileId = ProfileSeedFactory.DailyId;
     private string _liveThermalModeText = "--";
+    private string _liveThermalNoteText = string.Empty;
     private string _liveWindowsPowerModeText = "--";
     private string _liveAcStateText = "--";
-    private string _profileBlockingNote = string.Empty;
-    private bool _canApplyFullProfile;
-    private bool _canApplyPowerOnly;
 
     // F2 Battery
     private string _batteryChargeText = "--";
@@ -67,8 +69,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private string _batteryCycleText = "--";
     private string _batteryConservationText = "--";
     private string _batteryRawDetailText = string.Empty;
-    private bool _isConservationSupported;
-    private bool _isConservationEnabled;
+    private BatteryStatusSnapshot? _batterySnapshot;
 
     // F3 Telemetry
     private bool _pauseGpuOnBattery = true;
@@ -80,37 +81,46 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private string _gpuUtilText = "--";
     private string _gpuTempText = "--";
     private string _gpuPowerText = "--";
+    private string _cpuPowerText = "--";
     private string _gpuVramText = "--";
     private string _gpuPstateText = "--";
     private string _cpuFanRpmText = "--";
     private string _gpuFanRpmText = "--";
     private string _telemetryTimestampText = "--";
+    private double _cpuUsagePercent = double.NaN;
+    private double _memoryUsedPercent = double.NaN;
+    private double _gpuUtilPercent = double.NaN;
+    private double _diskActivePercent = double.NaN;
+    private string _memoryShortText = "--";
+    private const int HistoryCapacity = 120;
+    private readonly Queue<double> _cpuHistoryBuffer = new();
+    private readonly Queue<double> _gpuHistoryBuffer = new();
+    private IReadOnlyList<double> _cpuHistory = [];
+    private IReadOnlyList<double> _gpuHistory = [];
+    private bool _isOnAcPower;
+    private double _batteryChargePercent = double.NaN;
 
     // F4 Graphics
     private string _effectiveGraphicsText = "--";
     private string _pendingGraphicsText = "--";
     private bool _hasPendingGraphicsReboot;
-    private GraphicsRoutingMode _selectedTargetGraphicsMode = GraphicsRoutingMode.Hybrid;
-    private bool _confirmGraphicsRecoveryPath;
     private string _graphicsNoteText = string.Empty;
-
-    // F5 Software
-    private string _appSearchText = string.Empty;
-    private InstalledAppEntry? _selectedInstalledApp;
-    private string _softwareSummaryText = string.Empty;
+    private GraphicsStatusSnapshot? _graphicsSnapshot;
+    private GraphicsModeOption? _selectedGraphicsMode;
 
     // F6 Fan curves
     private string _fanStatusBannerText = Loc.Get("MsgPendingFanCapture");
     private string _fanValidationText = string.Empty;
     private PointCollection _fanPreviewPoints = [];
+    private FanChannelDraft? _selectedFanChannel;
+    private string _firmwareFanTableText = string.Empty;
+    private LenovoFanCapture? _liveFanCapture;
+    private IReadOnlyList<LenovoFanStage> _fanStages = LenovoFanCapture.OwnerReference.Stages;
+    private string _fanCaptureStatus = Loc.Get("FanCaptureReference");
+    private string _fanLevelText = string.Empty;
 
     // F7 Drivers
     private DriverCategory _selectedDriverCategory = DriverCategory.All;
-    private string _driverPackagePathText = string.Empty;
-    private string _driverPackageVerdictText = string.Empty;
-    private string _driverPackageSha256Text = string.Empty;
-    private bool _canLaunchVerifiedPackage;
-    private bool _userConfirmedPackageLaunch;
 
     public MainViewModel(
         JsonStateStore stateStore,
@@ -131,132 +141,202 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _hardware = hardware;
         _writeCoordinator = writeCoordinator;
 
+        AsyncRelayCommand Command(Func<Task> action) => new(() => RunSafelyAsync(action));
+
         NavigateCommand = new RelayCommand(p => { if (p is string s && int.TryParse(s, out var idx)) SelectedNavIndex = idx; });
-        DismissInterruptedOperationCommand = new AsyncRelayCommand(DismissInterruptedAsync);
+        DismissInterruptedOperationCommand = Command(DismissInterruptedAsync);
 
         SelectProfileCommand = new RelayCommand(p => { if (p is string id) SelectProfile(id); });
-        SaveProfileDraftCommand = new AsyncRelayCommand(SaveProfileDraftAsync);
-        ResetProfileToReferenceCommand = new AsyncRelayCommand(ResetProfileToReferenceAsync);
-        RefreshLiveThermalCommand = new AsyncRelayCommand(() => RefreshThermalAsync(allowElevation: true));
-        ApplyFullProfileCommand = new AsyncRelayCommand(ApplyFullProfileAsync, () => CanApplyFullProfile);
-        ApplyPowerFieldsOnlyCommand = new AsyncRelayCommand(ApplyPowerFieldsOnlyAsync, () => CanApplyPowerOnly);
-        SetStockThermalModeCommand = new AsyncRelayCommand(SetStockThermalModeAsync);
+        SaveProfileDraftCommand = Command(SaveProfileDraftAsync);
+        ResetProfileToReferenceCommand = Command(ResetProfileToReferenceAsync);
+        RefreshLiveThermalCommand = Command(() => RefreshThermalAsync(allowElevation: true));
+        ApplyProfilePowerCommand = new(
+            parameter => RunSafelyAsync(() => ApplyProfilePowerAsync(parameter as string ?? SelectedProfileId)),
+            _ => !IsHardwareBusy && !HasInterruptedOperation);
+        // One-click cleanup runs on the 垃圾清理 page; its summary goes to the toast / tray balloon.
+        QuickCleanupCommand = new AsyncRelayCommand(() =>
+        {
+            SelectedNavIndex = NavCleanup;
+            return RunSafelyAsync(Cleanup.RunAsync);
+        }, () => !Cleanup.IsCleaning && !Cleanup.IsDuplicateBusy);
+        Cleanup.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(QuickCleanupViewModel.IsCleaning) or nameof(QuickCleanupViewModel.IsDuplicateBusy))
+                QuickCleanupCommand.RaiseCanExecuteChanged();
+        };
+        Cleanup.Completed += ReportQuickAction;
+        // Uninstall results surface in the auto-hiding toast.
+        _uninstall = new Lazy<CleanupViewModel>(() =>
+        {
+            var model = new CleanupViewModel();
+            model.StatusReported += status => StatusMessage = status;
+            return model;
+        });
+        StartCoolingCommand = new(() => RunSafelyAsync(StartCoolingAsync), () => !IsHardwareBusy && !HasInterruptedOperation);
+        StopCoolingCommand = new(StopCooling, () => _coolingStop is { IsCancellationRequested: false });
+        RefreshBatteryCommand = Command(RefreshBatteryAsync);
+        SetConservationCommand = new(parameter => RunSafelyAsync(() => SetConservationAsync(parameter is "on")),
+            parameter => !IsHardwareBusy && _batterySnapshot?.IsConservationWriteSupported == true &&
+                         (parameter is "on" ? BatteryIsConservationOff : !BatteryIsConservationOff));
+        RefreshAllCommand = Command(RefreshAllAsync);
+        EnableFirmwareSensorsCommand = new(() => RunSafelyAsync(RunSensorMonitorAsync), () => !_isElevated && !_monitorRunning);
 
-        RefreshBatteryCommand = new AsyncRelayCommand(RefreshBatteryAsync);
-        ToggleConservationCommand = new AsyncRelayCommand(ToggleConservationAsync, () => _isConservationSupported);
+        ManualRefreshTelemetryCommand = Command(() => RefreshTelemetryAsync(allowWakeDgpu: true));
+        RefreshGraphicsCommand = Command(() => RefreshGraphicsAsync(allowElevation: true));
+        ApplyGraphicsModeCommand = new(() => RunSafelyAsync(ApplyGraphicsModeAsync),
+            () => !IsHardwareBusy && !HasInterruptedOperation && SelectedGraphicsMode is { } selection &&
+                  (_graphicsSnapshot?.IsVerifiedLiveRead != true || selection.Mode != CurrentGraphicsMode));
+        ApplyFanLevelsCommand = new(parameter => RunSafelyAsync(() => ApplyFanLevelsAsync(parameter is "restore")),
+            _ => !IsHardwareBusy && !HasInterruptedOperation && _liveFanCapture is not null);
+        PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName is nameof(IsHardwareBusy) or nameof(HasInterruptedOperation))
+            {
+                ApplyProfilePowerCommand.RaiseCanExecuteChanged();
+                StartCoolingCommand.RaiseCanExecuteChanged();
+                ApplyGraphicsModeCommand.RaiseCanExecuteChanged();
+                SetConservationCommand.RaiseCanExecuteChanged();
+                ApplyFanLevelsCommand.RaiseCanExecuteChanged();
+            }
+        };
 
-        ManualRefreshTelemetryCommand = new AsyncRelayCommand(() => RefreshTelemetryAsync(allowWakeDgpu: true));
-
-        RefreshGraphicsCommand = new AsyncRelayCommand(() => RefreshGraphicsAsync(allowElevation: true));
-        ApplyGraphicsModeCommand = new AsyncRelayCommand(ApplyGraphicsModeAsync, () => ConfirmGraphicsRecoveryPath);
-
-        OpenWindowsAppsCommand = new RelayCommand(() => _software.OpenWindowsInstalledApps(SelectedInstalledApp?.PackageFamilyName));
         OpenWindowsStartupCommand = new RelayCommand(() => _software.OpenWindowsStartupApps());
-        RunLeftoverScanCommand = new AsyncRelayCommand(() => RefreshSoftwareAsync(includeLeftovers: true));
 
         AddFanPointCommand = new RelayCommand(AddFanPoint);
         ValidateFanPreviewCommand = new RelayCommand(UpdateFanCurvePreview);
-        ReadFanTableCommand = new AsyncRelayCommand(ReadFanFromFirmwareAsync);
-        ApplyFanCurveCommand = new AsyncRelayCommand(ApplyFanCurveAsync);
-        RestoreDefaultFanCommand = new AsyncRelayCommand(RestoreDefaultFanAsync);
+        ReadFanTableCommand = Command(ReadFanFromFirmwareAsync);
+        AddFanChannelCommand = new RelayCommand(AddFanChannel);
+        SaveFanDraftCommand = Command(SaveFanDraftAsync);
+        SaveFanCaptureCommand = new AsyncRelayCommand(
+            () => RunSafelyAsync(SaveFanCaptureAsync), () => _liveFanCapture is not null);
 
         OpenExternalDriverLinkCommand = new RelayCommand(p => { if (p is string url) _drivers.OpenExternalTarget(url); });
-        BrowseDriverPackageCommand = new AsyncRelayCommand(BrowseAndInspectDriverPackageAsync);
-        LaunchVerifiedPackageCommand = new AsyncRelayCommand(LaunchVerifiedDriverPackageAsync, () => CanLaunchVerifiedPackage && UserConfirmedPackageLaunch);
 
-        RunElevatedProbeCommand = new AsyncRelayCommand(() => RefreshCapabilitiesAsync(allowElevation: true));
-        ExportCapabilityReportCommand = new AsyncRelayCommand(ExportCapabilityReportAsync);
-
-        _telemetryTimer = new System.Timers.Timer(2000) { AutoReset = true };
-        _telemetryTimer.Elapsed += async (_, _) =>
-        {
-            if (_isWindowVisible && SelectedNavIndex == 2)
-            {
-                await RefreshTelemetryAsync(allowWakeDgpu: false).ConfigureAwait(false);
-            }
-        };
+        _telemetryTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _telemetryTimer.Tick += (_, _) => SampleVisiblePage();
     }
 
     public ObservableCollection<ProfileFieldRow> ProfileFields { get; } = [];
     public ObservableCollection<DiskCapacityInfo> DiskCapacities { get; } = [];
-    public ObservableCollection<GraphicsModeOption> SupportedGraphicsModes { get; } = [];
-    public ObservableCollection<InstalledAppEntry> FilteredApps { get; } = [];
-    public ObservableCollection<StartupEntry> StartupEntries { get; } = [];
-    public ObservableCollection<LenovoLeftoverFinding> LeftoverFindings { get; } = [];
-    public ObservableCollection<FanPointRow> FanPoints { get; } = [];
-    public ObservableCollection<InstalledDriverEntry> FilteredDrivers { get; } = [];
-    public ObservableCollection<FeatureCapability> Capabilities { get; } = [];
-    public ObservableCollection<string> UnresolvedItems { get; } = [];
+    public IReadOnlyList<StartupEntryRow> StartupEntries { get; private set; } = [];
+    public ObservableCollection<FanChannelDraft> FanChannels { get; } = [];
+    public IReadOnlyList<string> FanSpeedUnits { get; } = ["RPM", "%", "Level"];
+    public IReadOnlyList<InstalledDriverEntry> FilteredDrivers { get; private set; } = [];
 
     public IReadOnlyList<DriverCategory> DriverCategories { get; } = Enum.GetValues<DriverCategory>();
     public OfficialDriverLinks DriverLinks => OfficialDriverLinks.Default;
 
+    // Page indices, in sidebar order. Keep in sync with the TabItems in MainWindow.xaml.
+    public const int NavDashboard = 0;
+    public const int NavProfiles = 1;
+    public const int NavFanCurves = 2;
+    public const int NavBattery = 3;
+    // Merged into the battery page; kept so existing page arguments (e.g. --page 4) still resolve.
+    public const int NavGraphics = 4;
+    public const int NavCleanup = 5;
+    public const int NavSoftware = 6;
+    public const int NavDrivers = 7;
+    public const int NavLast = NavDrivers;
+
     public RelayCommand NavigateCommand { get; }
+    public AsyncRelayCommand RefreshAllCommand { get; }
+    public AsyncRelayCommand EnableFirmwareSensorsCommand { get; }
+    public string FirmwareMonitorText => Loc.Get(_monitorHasSample || _isElevated ? "MsgSensorsEnabled" : "BtnEnableFirmwareSensors");
     public AsyncRelayCommand DismissInterruptedOperationCommand { get; }
     public RelayCommand SelectProfileCommand { get; }
     public AsyncRelayCommand SaveProfileDraftCommand { get; }
     public AsyncRelayCommand ResetProfileToReferenceCommand { get; }
     public AsyncRelayCommand RefreshLiveThermalCommand { get; }
-    public AsyncRelayCommand ApplyFullProfileCommand { get; }
-    public AsyncRelayCommand ApplyPowerFieldsOnlyCommand { get; }
-    public AsyncRelayCommand SetStockThermalModeCommand { get; }
+    public AsyncRelayCommand ApplyProfilePowerCommand { get; }
+    /// <summary>垃圾清理 page (one-click cleanup, C drive incl. restore points, duplicates, large files).</summary>
+    internal QuickCleanupViewModel Cleanup { get; } = new();
+
+    /// <summary>Separate instance for the uninstall tab on the software page (independent of the cleanup page).</summary>
+    private readonly Lazy<CleanupViewModel> _uninstall;
+    internal CleanupViewModel Uninstall => _uninstall.Value;
+
+    /// <summary>DataContext for the uninstall tab (CleanupViewModel is internal, so it is exposed as object).</summary>
+    public object UninstallContext => Uninstall;
+    public AsyncRelayCommand QuickCleanupCommand { get; }
+    public AsyncRelayCommand StartCoolingCommand { get; }
+    public RelayCommand StopCoolingCommand { get; }
+    public bool IsHardwareBusy { get => _isHardwareBusy; private set => SetField(ref _isHardwareBusy, value); }
+    public string? ActiveProfileId => _latestThermalSnapshot?.MatchedProfileId;
+    public event Action<string>? QuickActionCompleted;
     public AsyncRelayCommand RefreshBatteryCommand { get; }
-    public AsyncRelayCommand ToggleConservationCommand { get; }
+    public AsyncRelayCommand SetConservationCommand { get; }
+    public AsyncRelayCommand ApplyGraphicsModeCommand { get; }
+    public AsyncRelayCommand ApplyFanLevelsCommand { get; }
     public AsyncRelayCommand ManualRefreshTelemetryCommand { get; }
     public AsyncRelayCommand RefreshGraphicsCommand { get; }
-    public AsyncRelayCommand ApplyGraphicsModeCommand { get; }
-    public RelayCommand OpenWindowsAppsCommand { get; }
     public RelayCommand OpenWindowsStartupCommand { get; }
-    public AsyncRelayCommand RunLeftoverScanCommand { get; }
     public RelayCommand AddFanPointCommand { get; }
     public RelayCommand ValidateFanPreviewCommand { get; }
     public AsyncRelayCommand ReadFanTableCommand { get; }
-    public AsyncRelayCommand ApplyFanCurveCommand { get; }
-    public AsyncRelayCommand RestoreDefaultFanCommand { get; }
+    public RelayCommand AddFanChannelCommand { get; }
+    public AsyncRelayCommand SaveFanDraftCommand { get; }
+    public AsyncRelayCommand SaveFanCaptureCommand { get; }
     public RelayCommand OpenExternalDriverLinkCommand { get; }
-    public AsyncRelayCommand BrowseDriverPackageCommand { get; }
-    public AsyncRelayCommand LaunchVerifiedPackageCommand { get; }
-    public AsyncRelayCommand RunElevatedProbeCommand { get; }
-    public AsyncRelayCommand ExportCapabilityReportCommand { get; }
 
     public int SelectedNavIndex
     {
         get => _selectedNavIndex;
-        set => SetField(ref _selectedNavIndex, value);
+        set
+        {
+            // The graphics mode card now lives on the battery page.
+            if (value == NavGraphics)
+                value = NavBattery;
+            if (value is < 0 or > NavLast || !SetField(ref _selectedNavIndex, value) || !_initialUiReady)
+                return;
+            UpdateSampling();
+            _ = RunSafelyAsync(() => LoadSelectedInventoryAsync(value));
+        }
     }
 
     public string MachineBannerText { get => _machineBannerText; set => SetField(ref _machineBannerText, value); }
-    public string PrivilegeBadgeText { get => _privilegeBadgeText; set => SetField(ref _privilegeBadgeText, value); }
-    public string StatusMessage { get => _statusMessage; set => SetField(ref _statusMessage, value); }
+    /// <summary>Last action feedback. Re-raised on every set (even with the same text) so the toast re-appears.</summary>
+    public string StatusMessage
+    {
+        get => _statusMessage;
+        set
+        {
+            _statusMessage = value ?? string.Empty;
+            RaisePropertyChanged();
+        }
+    }
     public bool HasInterruptedOperation { get => _hasInterruptedOperation; set => SetField(ref _hasInterruptedOperation, value); }
     public string InterruptedOperationSummary { get => _interruptedOperationSummary; set => SetField(ref _interruptedOperationSummary, value); }
 
-    public string SelectedProfileId { get => _selectedProfileId; set => SetField(ref _selectedProfileId, value); }
+    public string SelectedProfileId
+    {
+        get => _selectedProfileId;
+        set
+        {
+            if (SetField(ref _selectedProfileId, value))
+                RaisePropertyChanged(nameof(SelectedProfileDisplayName));
+        }
+    }
+
+    public string SelectedProfileDisplayName => SelectedProfileId == ProfileSeedFactory.GamingId
+        ? Loc.Get("ProfileGamingName")
+        : Loc.Get("ProfileDailyName");
+
+    public string AppVersionText { get; } =
+        "v" + (typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.0.0");
+
+    public bool IsOnAcPower { get => _isOnAcPower; set => SetField(ref _isOnAcPower, value); }
+    public double BatteryChargePercent { get => _batteryChargePercent; set => SetField(ref _batteryChargePercent, value); }
+    public double CpuUsagePercent { get => _cpuUsagePercent; set => SetField(ref _cpuUsagePercent, value); }
+    public double MemoryUsedPercent { get => _memoryUsedPercent; set => SetField(ref _memoryUsedPercent, value); }
+    public double GpuUtilPercent { get => _gpuUtilPercent; set => SetField(ref _gpuUtilPercent, value); }
+    public double DiskActivePercent { get => _diskActivePercent; set => SetField(ref _diskActivePercent, value); }
+    public string MemoryShortText { get => _memoryShortText; set => SetField(ref _memoryShortText, value); }
+    public IReadOnlyList<double> CpuHistory { get => _cpuHistory; private set => SetField(ref _cpuHistory, value); }
+    public IReadOnlyList<double> GpuHistory { get => _gpuHistory; private set => SetField(ref _gpuHistory, value); }
     public string LiveThermalModeText { get => _liveThermalModeText; set => SetField(ref _liveThermalModeText, value); }
+    public string LiveThermalNoteText { get => _liveThermalNoteText; set => SetField(ref _liveThermalNoteText, value); }
     public string LiveWindowsPowerModeText { get => _liveWindowsPowerModeText; set => SetField(ref _liveWindowsPowerModeText, value); }
     public string LiveAcStateText { get => _liveAcStateText; set => SetField(ref _liveAcStateText, value); }
-    public string ProfileBlockingNote { get => _profileBlockingNote; set => SetField(ref _profileBlockingNote, value); }
-
-    public bool CanApplyFullProfile
-    {
-        get => _canApplyFullProfile;
-        set
-        {
-            if (SetField(ref _canApplyFullProfile, value))
-                Application.Current?.Dispatcher.Invoke(() => ApplyFullProfileCommand.RaiseCanExecuteChanged());
-        }
-    }
-
-    public bool CanApplyPowerOnly
-    {
-        get => _canApplyPowerOnly;
-        set
-        {
-            if (SetField(ref _canApplyPowerOnly, value))
-                Application.Current?.Dispatcher.Invoke(() => ApplyPowerFieldsOnlyCommand.RaiseCanExecuteChanged());
-        }
-    }
-
     public string BatteryChargeText { get => _batteryChargeText; set => SetField(ref _batteryChargeText, value); }
     public string BatteryActivityText { get => _batteryActivityText; set => SetField(ref _batteryActivityText, value); }
     public string BatteryHealthText { get => _batteryHealthText; set => SetField(ref _batteryHealthText, value); }
@@ -265,7 +345,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public string BatteryCycleText { get => _batteryCycleText; set => SetField(ref _batteryCycleText, value); }
     public string BatteryConservationText { get => _batteryConservationText; set => SetField(ref _batteryConservationText, value); }
     public string BatteryRawDetailText { get => _batteryRawDetailText; set => SetField(ref _batteryRawDetailText, value); }
-    public bool IsConservationEnabled { get => _isConservationEnabled; set => SetField(ref _isConservationEnabled, value); }
 
     public bool PauseGpuOnBattery
     {
@@ -274,7 +353,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             if (SetField(ref _pauseGpuOnBattery, value))
             {
-                _ = _stateStore.SaveSettingsAsync(_settings with { PauseGpuPollingOnBattery = value });
+                _ = RunSafelyAsync(() => UpdateSettingsAsync(settings => settings with { PauseGpuPollingOnBattery = value }));
             }
         }
     }
@@ -287,6 +366,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public string GpuUtilText { get => _gpuUtilText; set => SetField(ref _gpuUtilText, value); }
     public string GpuTempText { get => _gpuTempText; set => SetField(ref _gpuTempText, value); }
     public string GpuPowerText { get => _gpuPowerText; set => SetField(ref _gpuPowerText, value); }
+    public string CpuPowerText { get => _cpuPowerText; set => SetField(ref _cpuPowerText, value); }
     public string GpuVramText { get => _gpuVramText; set => SetField(ref _gpuVramText, value); }
     public string GpuPstateText { get => _gpuPstateText; set => SetField(ref _gpuPstateText, value); }
     public string CpuFanRpmText { get => _cpuFanRpmText; set => SetField(ref _cpuFanRpmText, value); }
@@ -296,42 +376,23 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public string EffectiveGraphicsText { get => _effectiveGraphicsText; set => SetField(ref _effectiveGraphicsText, value); }
     public string PendingGraphicsText { get => _pendingGraphicsText; set => SetField(ref _pendingGraphicsText, value); }
     public bool HasPendingGraphicsReboot { get => _hasPendingGraphicsReboot; set => SetField(ref _hasPendingGraphicsReboot, value); }
-    public GraphicsRoutingMode SelectedTargetGraphicsMode { get => _selectedTargetGraphicsMode; set => SetField(ref _selectedTargetGraphicsMode, value); }
-
-    public bool ConfirmGraphicsRecoveryPath
-    {
-        get => _confirmGraphicsRecoveryPath;
-        set
-        {
-            if (SetField(ref _confirmGraphicsRecoveryPath, value))
-            {
-                ApplyGraphicsModeCommand.RaiseCanExecuteChanged();
-                _ = _stateStore.SaveSettingsAsync(_settings with { ConfirmGraphicsRecoveryPath = value });
-            }
-        }
-    }
-
     public string GraphicsNoteText { get => _graphicsNoteText; set => SetField(ref _graphicsNoteText, value); }
 
-    public string AppSearchText
+    public FanChannelDraft? SelectedFanChannel
     {
-        get => _appSearchText;
+        get => _selectedFanChannel;
         set
         {
-            if (SetField(ref _appSearchText, value))
-            {
-                ApplyAppFilter();
-            }
+            if (SetField(ref _selectedFanChannel, value))
+                UpdateFanCurvePreview();
         }
     }
 
-    public InstalledAppEntry? SelectedInstalledApp
-    {
-        get => _selectedInstalledApp;
-        set => SetField(ref _selectedInstalledApp, value);
-    }
+    public string FirmwareFanTableText { get => _firmwareFanTableText; set => SetField(ref _firmwareFanTableText, value); }
+    public IReadOnlyList<LenovoFanStage> FanStages { get => _fanStages; private set => SetField(ref _fanStages, value); }
+    public string FanCaptureStatus { get => _fanCaptureStatus; private set => SetField(ref _fanCaptureStatus, value); }
+    public string FanLevelText { get => _fanLevelText; set => SetField(ref _fanLevelText, value); }
 
-    public string SoftwareSummaryText { get => _softwareSummaryText; set => SetField(ref _softwareSummaryText, value); }
     public string FanStatusBannerText { get => _fanStatusBannerText; set => SetField(ref _fanStatusBannerText, value); }
     public string FanValidationText { get => _fanValidationText; set => SetField(ref _fanValidationText, value); }
     public PointCollection FanPreviewPoints { get => _fanPreviewPoints; set => SetField(ref _fanPreviewPoints, value); }
@@ -348,33 +409,15 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public string DriverPackagePathText { get => _driverPackagePathText; set => SetField(ref _driverPackagePathText, value); }
-    public string DriverPackageVerdictText { get => _driverPackageVerdictText; set => SetField(ref _driverPackageVerdictText, value); }
-    public string DriverPackageSha256Text { get => _driverPackageSha256Text; set => SetField(ref _driverPackageSha256Text, value); }
 
-    public bool CanLaunchVerifiedPackage
-    {
-        get => _canLaunchVerifiedPackage;
-        set
-        {
-            if (SetField(ref _canLaunchVerifiedPackage, value))
-                LaunchVerifiedPackageCommand.RaiseCanExecuteChanged();
-        }
-    }
+    private Task? _initialization;
+    public Task InitializeAsync() => _initialization ??= InitializeCoreAsync();
 
-    public bool UserConfirmedPackageLaunch
+    private async Task InitializeCoreAsync()
     {
-        get => _userConfirmedPackageLaunch;
-        set
-        {
-            if (SetField(ref _userConfirmedPackageLaunch, value))
-                LaunchVerifiedPackageCommand.RaiseCanExecuteChanged();
-        }
-    }
-
-    public async Task InitializeAsync()
-    {
-        var loaded = await _stateStore.LoadSettingsAsync().ConfigureAwait(false);
+        if (SelectedNavIndex == NavDashboard && _isWindowVisible)
+            ReadQuickMetrics();
+        var loaded = await Task.Run(() => _stateStore.LoadSettingsAsync(_lifetime.Token)).ConfigureAwait(false);
         _settings = loaded.Settings;
 
         var interrupted = await _writeCoordinator.GetInterruptedOperationAsync().ConfigureAwait(false);
@@ -382,14 +425,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         await RunOnUiAsync(() =>
         {
-            MachineBannerText = $"{identity.Manufacturer} {identity.Model} ({identity.BiosVersion})";
-            PrivilegeBadgeText = LenovoWmiProvider.IsProcessElevated()
-                ? Loc.Get("StatusElevated")
-                : Loc.Get("StatusStandardUser");
+            _isTargetLegion = identity.IsTargetLegion83JJ;
+            // Sidebar device card shows the Windows computer name (e.g. LAPTOP-XXXX).
+            MachineBannerText = Environment.MachineName;
             _pauseGpuOnBattery = _settings.PauseGpuPollingOnBattery;
-            _confirmGraphicsRecoveryPath = _settings.ConfirmGraphicsRecoveryPath;
+
             RaisePropertyChanged(nameof(PauseGpuOnBattery));
-            RaisePropertyChanged(nameof(ConfirmGraphicsRecoveryPath));
 
             if (loaded.RecoveredFromLastGood)
             {
@@ -404,38 +445,200 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             }
 
             SelectProfile(_settings.ActiveSelectedProfileId);
-        }).ConfigureAwait(false);
+            if (_disposed)
+                return;
+            _initialUiReady = true;
+            UpdateSampling();
+            _ = RunSafelyAsync(() => RefreshThermalAsync(allowElevation: false));
+            _ = RunSafelyAsync(() => LoadSelectedInventoryAsync(SelectedNavIndex));
+        });
+    }
 
-        await RefreshCapabilitiesAsync(allowElevation: false).ConfigureAwait(false);
-        await RefreshThermalAsync(allowElevation: false).ConfigureAwait(false);
-        await RefreshBatteryAsync().ConfigureAwait(false);
-        await RefreshTelemetryAsync(allowWakeDgpu: false).ConfigureAwait(false);
-        await RefreshGraphicsAsync(allowElevation: false).ConfigureAwait(false);
-        await RefreshSoftwareAsync(includeLeftovers: false).ConfigureAwait(false);
-        await RefreshDriversAsync().ConfigureAwait(false);
+    private async Task LoadSelectedInventoryAsync(int index)
+    {
+        Func<Task>? load = index switch
+        {
+            NavBattery => () => RefreshGraphicsAsync(allowElevation: false),
+            NavSoftware => async () =>
+            {
+                await RunOnUiAsync(() => Uninstall.RefreshAppsCommand.Execute(null));
+                await RefreshSoftwareAsync();
+            },
+            NavDrivers => RefreshDriversAsync,
+            NavCleanup => Cleanup.LoadDrivesAsync,
+            _ => null
+        };
+        if (load is null || !_requestedInventoryPages.Add(index))
+            return;
 
-        _telemetryTimer.Start();
+        try
+        {
+            await load();
+        }
+        catch
+        {
+            _requestedInventoryPages.Remove(index);
+            throw;
+        }
     }
 
     public async Task OnSystemResumeAsync()
     {
-        // Never reapply profiles on resume; refresh read-only hardware state only.
-        await RefreshThermalAsync(allowElevation: false).ConfigureAwait(false);
-        await RefreshBatteryAsync().ConfigureAwait(false);
-        await RefreshTelemetryAsync(allowWakeDgpu: false).ConfigureAwait(false);
-        await RefreshGraphicsAsync(allowElevation: false).ConfigureAwait(false);
+        _nextBatteryTick = 0;
+        if (_isWindowVisible)
+            SampleVisiblePage();
+        await RefreshThermalAsync(allowElevation: false);
+        if (SelectedNavIndex == NavBattery)
+            await RefreshGraphicsAsync(allowElevation: false);
     }
 
     public void SetWindowVisibility(bool visible)
     {
+        if (_isWindowVisible == visible)
+            return;
         _isWindowVisible = visible;
+        if (_initialUiReady)
+            UpdateSampling();
+    }
+
+    private void UpdateSampling()
+    {
+        _telemetryTimer.Stop();
+        if (!_isWindowVisible || SelectedNavIndex != NavDashboard)
+            _ = RunSafelyAsync(ReleaseIdleTelemetryAsync);
+        if (_disposed || !_isWindowVisible || SelectedNavIndex is not (NavDashboard or NavBattery or NavProfiles))
+            return;
+
+        _nextBatteryTick = 0;
+        _previousCpu = SystemMetricsInterop.SampleCpuTimes();
+        SampleVisiblePage();
+        _telemetryTimer.Start();
+    }
+
+    private async Task ReleaseIdleTelemetryAsync()
+    {
+        await _telemetryGate.WaitAsync(_lifetime.Token);
+        try
+        {
+            if (!_isWindowVisible || SelectedNavIndex != NavDashboard)
+                await Task.Run(_telemetry.ReleaseIdleResources);
+        }
+        finally
+        {
+            _telemetryGate.Release();
+        }
+    }
+
+    private void SampleVisiblePage()
+    {
+        if (_disposed || !_isWindowVisible)
+            return;
+        if (SelectedNavIndex == NavDashboard)
+        {
+            ReadQuickMetrics();
+            _ = RunSafelyAsync(() => RefreshTelemetryAsync(false));
+        }
+
+        if (SelectedNavIndex is NavDashboard or NavProfiles)
+        {
+            if (_isTargetLegion && !_isElevated && !_monitorAttempted)
+                EnableFirmwareSensorsCommand.Execute(null);
+            else if (_monitorRunning && _nextSensorSample.CurrentCount == 0)
+                _nextSensorSample.Release();
+        }
+
+        if (!_batteryRefreshPending && Environment.TickCount64 >= _nextBatteryTick)
+            _ = RunSafelyAsync(RefreshSlowStatusAsync);
+    }
+
+    private async Task RefreshSlowStatusAsync()
+    {
+        _batteryRefreshPending = true;
+        _nextBatteryTick = Environment.TickCount64 + 10000;
+        try
+        {
+            await Task.WhenAll(RefreshBatteryAsync(),
+                _isElevated && SelectedNavIndex != NavBattery ? RefreshThermalAsync(false) : Task.CompletedTask);
+        }
+        finally
+        {
+            _batteryRefreshPending = false;
+        }
+    }
+
+    private void ReadQuickMetrics()
+    {
+        var current = SystemMetricsInterop.SampleCpuTimes();
+        if (current is not null && _previousCpu is not null &&
+            SystemMetricsInterop.ComputeCpuUtilization(_previousCpu, current) is double cpu)
+        {
+            CpuUsagePercent = cpu;
+            CpuUsageText = $"{cpu:F1} %";
+            CpuHistory = Push(_cpuHistoryBuffer, cpu);
+        }
+        _previousCpu = current;
+
+        if (SystemMetricsInterop.ReadMemoryUsage() is { } memory)
+        {
+            MemoryUsedPercent = memory.UsedPercent;
+            MemoryShortText = $"{memory.UsedGb:F1} / {memory.TotalGb:F1} GB";
+            MemoryUsageText = $"{MemoryShortText} ({memory.UsedPercent:F0}%)";
+        }
+        var ac = Win32BatteryInterop.IsAcOnlineQuick();
+        LiveAcStateText = Loc.Get(ac ? "MsgAcOnline" : "MsgOnBattery");
+        IsOnAcPower = ac;
+        TelemetryTimestampText = DateTime.Now.ToString("HH:mm:ss");
+        if (_monitorHasSample && Environment.TickCount64 - _lastSensorTick > 4500)
+            CpuTempText = CpuFanRpmText = GpuFanRpmText = "--";
+        if (_lastDetailTick != 0 && Environment.TickCount64 - _lastDetailTick > 4500)
+        {
+            GpuTempText = GpuPowerText = GpuUtilText = GpuVramText = CpuPowerText = DiskActivityText = "--";
+            GpuUtilPercent = DiskActivePercent = double.NaN;
+        }
+    }
+
+    private async Task RunSensorMonitorAsync()
+    {
+        _monitorAttempted = _monitorRunning = true;
+        var ct = _lifetime.Token;
+        try
+        {
+            var response = await Task.Run(() => new ElevatedWorkerClient().MonitorFirmwareSensorsAsync(
+                (sample, thermal) => RunOnUiAsync(() =>
+                {
+                    if (_disposed)
+                        return;
+                    var firstSample = !_monitorHasSample;
+                    _monitorHasSample = true;
+                    _lastSensorTick = Environment.TickCount64;
+                    CpuTempText = sample.CpuTemperatureC is int cpu ? $"{cpu} °C" : Loc.Get("LblUnavailable");
+                    CpuFanRpmText = sample.CpuFanRpm is int fan ? $"{fan} RPM" : Loc.Get("LblUnavailable");
+                    GpuFanRpmText = sample.GpuFanRpm is int gpuFan ? $"{gpuFan} RPM" : Loc.Get("LblUnavailable");
+                    if (firstSample)
+                        RaisePropertyChanged(nameof(FirmwareMonitorText));
+                    if (thermal is not null && !IsHardwareBusy && thermal.CapturedAtUtc > _lastHardwareWriteUtc &&
+                        (_latestThermalSnapshot?.CapturedAtUtc > thermal.CapturedAtUtc) != true)
+                        ApplyThermalSnapshotToUi(thermal);
+                }), token => _nextSensorSample.WaitAsync(token), ct), ct);
+            if (!ct.IsCancellationRequested && !response.Success)
+                StatusMessage = response.WasCancelled ? Loc.Get("MsgSensorsDenied") : Loc.Format("MsgSensorsFailed", response.Message ?? response.ErrorCode ?? string.Empty);
+        }
+        finally
+        {
+            _monitorRunning = _monitorHasSample = false;
+            if (!_disposed)
+            {
+                CpuTempText = CpuFanRpmText = GpuFanRpmText = Loc.Get("LblNeedsAdmin");
+                RaisePropertyChanged(nameof(FirmwareMonitorText));
+            }
+        }
     }
 
     private void SelectProfile(string profileId)
     {
-        SelectedProfileId = profileId;
         var profile = _settings.Profiles.FirstOrDefault(p => p.Id == profileId)
                       ?? ProfileSeedFactory.CreatePristineReference(ProfileSeedFactory.DailyId);
+        SelectedProfileId = profile.Id;
         var reference = ProfileSeedFactory.CreatePristineReference(profile.Id);
 
         var draftMap = profile.Power.AsFieldMap();
@@ -463,41 +666,27 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
 
         LoadFanPointsFromProfile(profile);
-        EvaluateProfileApplyButtons(profile);
+        _liveFanCapture = null;
+        FanStages = (profile.CapturedLegionFanTable ?? LenovoFanCapture.OwnerReference).Stages;
+        FanLevelText = string.Join(", ", FanStages.Select(stage => stage.SpeedLevel));
+        FanCaptureStatus = Loc.Get(profile.CapturedLegionFanTable is null ? "FanCaptureReference" : "FanCaptureSaved");
+        SaveFanCaptureCommand.RaiseCanExecuteChanged();
+        ApplyFanLevelsCommand.RaiseCanExecuteChanged();
     }
 
     private void LoadFanPointsFromProfile(PerformanceProfile profile)
     {
-        FanPoints.Clear();
-        var channel = profile.FanCurve.Channels.FirstOrDefault();
-        if (channel is not null)
+        FanChannels.Clear();
+        foreach (var channel in profile.FanCurve.Channels)
         {
-            foreach (var pt in channel.Points)
-            {
-                FanPoints.Add(new FanPointRow
-                {
-                    TemperatureC = pt.TemperatureC,
-                    FanSpeedValue = pt.FanSpeedValue,
-                    SpeedUnit = pt.SpeedUnit
-                });
-            }
+            FanChannels.Add(FanChannelDraft.FromSaved(channel));
         }
 
+        SelectedFanChannel = FanChannels.FirstOrDefault();
         FanStatusBannerText = profile.FanCurve.Status == FanCurveStatus.PendingCapture
             ? Loc.Get("MsgPendingFanCapture")
-            : $"{profile.FanCurve.Status}: {profile.FanCurve.SourceDescription}";
+            : $"{profile.Id}: {Loc.Get("MsgFanDraftSaved")}";
         UpdateFanCurvePreview();
-    }
-
-    private void EvaluateProfileApplyButtons(PerformanceProfile profile)
-    {
-        var isAc = _latestThermalSnapshot?.IsOnAcPower ?? true;
-        var preflight = _validator.PreflightProfile(profile, _settings.FieldContracts, isAc);
-        CanApplyFullProfile = preflight.CanApplyFullProfile;
-        CanApplyPowerOnly = preflight.CanApplyPowerFieldsOnly;
-        ProfileBlockingNote = preflight.BlockingReasons.Count > 0
-            ? string.Join(" | ", preflight.BlockingReasons.Take(3))
-            : "Ready";
     }
 
     private ProfilePowerSettings ParseDraftSettingsFromRows()
@@ -530,105 +719,198 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private async Task SaveProfileDraftAsync()
     {
-        var updatedPower = ParseDraftSettingsFromRows();
-        var updatedProfiles = _settings.Profiles.Select(p =>
-            p.Id == SelectedProfileId
-                ? p with { Power = updatedPower, LastModifiedUtc = DateTimeOffset.UtcNow }
-                : p).ToList();
+        var profileId = SelectedProfileId;
+        var invalid = ProfileFields.FirstOrDefault(row =>
+            !string.IsNullOrWhiteSpace(row.DraftText) && !int.TryParse(row.DraftText, out _));
+        if (invalid is not null)
+        {
+            StatusMessage = Loc.Format("MsgInvalidPowerValue", invalid.DisplayLabel);
+            return;
+        }
 
-        _settings = _settings with
+        var updatedPower = ParseDraftSettingsFromRows();
+        await UpdateSettingsAsync(settings => settings with
         {
-            ActiveSelectedProfileId = SelectedProfileId,
-            Profiles = updatedProfiles
-        };
-        await _stateStore.SaveSettingsAsync(_settings).ConfigureAwait(false);
-        await RunOnUiAsync(() =>
-        {
-            var active = _settings.Profiles.First(p => p.Id == SelectedProfileId);
-            EvaluateProfileApplyButtons(active);
-            StatusMessage = $"Saved draft for '{SelectedProfileId}' to settings.json (no hardware write performed).";
-        }).ConfigureAwait(false);
+            ActiveSelectedProfileId = profileId,
+            Profiles = settings.Profiles.Select(p => p.Id == profileId
+                ? p with { Power = updatedPower, LastModifiedUtc = DateTimeOffset.UtcNow }
+                : p).ToArray()
+        });
+        StatusMessage = Loc.Format("MsgProfileDraftSaved", profileId);
     }
 
     private async Task ResetProfileToReferenceAsync()
     {
-        var reference = ProfileSeedFactory.CreatePristineReference(SelectedProfileId);
-        var updatedProfiles = _settings.Profiles.Select(p => p.Id == SelectedProfileId ? reference : p).ToList();
-        _settings = _settings with { Profiles = updatedProfiles };
-        await _stateStore.SaveSettingsAsync(_settings).ConfigureAwait(false);
-        await RunOnUiAsync(() =>
+        var profileId = SelectedProfileId;
+        var reference = ProfileSeedFactory.CreatePristineReference(profileId);
+        await UpdateSettingsAsync(settings => settings with
         {
-            SelectProfile(SelectedProfileId);
-            StatusMessage = $"Restored '{SelectedProfileId}' draft to pristine Section 3 reference values.";
-        }).ConfigureAwait(false);
-    }
-
-    private async Task ApplyFullProfileAsync()
-    {
-        await SaveProfileDraftAsync().ConfigureAwait(false);
-        var profile = _settings.Profiles.First(p => p.Id == SelectedProfileId);
-        var report = await _writeCoordinator.ApplyPowerFieldsAsync(profile, _settings.FieldContracts).ConfigureAwait(false);
-        await RunOnUiAsync(() =>
+            Profiles = settings.Profiles.Select(p => p.Id == profileId
+                ? p with { Power = reference.Power, LastModifiedUtc = DateTimeOffset.UtcNow }
+                : p).ToArray()
+        });
+        if (SelectedProfileId == profileId)
         {
-            StatusMessage = report.Summary;
-            if (report.ReadBackSnapshot is not null)
-            {
-                ApplyThermalSnapshotToUi(report.ReadBackSnapshot);
-            }
-        }).ConfigureAwait(false);
-    }
-
-    private async Task ApplyPowerFieldsOnlyAsync()
-    {
-        await SaveProfileDraftAsync().ConfigureAwait(false);
-        var profile = _settings.Profiles.First(p => p.Id == SelectedProfileId);
-        var report = await _writeCoordinator.ApplyPowerFieldsAsync(profile, _settings.FieldContracts).ConfigureAwait(false);
-        await RunOnUiAsync(() =>
-        {
-            StatusMessage = report.Summary;
-            if (report.ReadBackSnapshot is not null)
-            {
-                ApplyThermalSnapshotToUi(report.ReadBackSnapshot);
-            }
-        }).ConfigureAwait(false);
-    }
-
-    private async Task SetStockThermalModeAsync(object? param)
-    {
-        if (param is not string modeName || !Enum.TryParse<ThermalMode>(modeName, out var mode))
-        {
-            return;
+            foreach (var row in ProfileFields)
+                row.DraftText = row.ReferenceValue.ToString();
         }
 
-        var report = await _writeCoordinator.SetStockThermalModeAsync(mode).ConfigureAwait(false);
-        await RunOnUiAsync(() =>
+        StatusMessage = Loc.Format("MsgPowerDraftReset", profileId);
+    }
+
+    private async Task UpdateSettingsAsync(Func<AppSettingsState, AppSettingsState> update)
+    {
+        await _settingsSaveLock.WaitAsync();
+        try
         {
-            StatusMessage = report.Summary;
-            if (report.ReadBackSnapshot is not null)
-            {
-                ApplyThermalSnapshotToUi(report.ReadBackSnapshot);
-            }
-        }).ConfigureAwait(false);
+            var updated = update(_settings);
+            await _stateStore.SaveSettingsAsync(updated);
+            _settings = updated;
+        }
+        finally
+        {
+            _settingsSaveLock.Release();
+        }
     }
 
     private async Task RefreshThermalAsync(bool allowElevation)
     {
-        var snap = await _hardware.ReadLiveThermalSnapshotAsync(allowElevation).ConfigureAwait(false);
-        await RunOnUiAsync(() => ApplyThermalSnapshotToUi(snap)).ConfigureAwait(false);
+        var startedUtc = DateTimeOffset.UtcNow;
+        var busyAtStart = IsHardwareBusy;
+        var snap = await _hardware.ReadLiveThermalSnapshotAsync(allowElevation, _lifetime.Token).ConfigureAwait(false);
+        await RunOnUiAsync(() =>
+        {
+            // Drop reads that overlapped a profile/fan write or are older than the shown snapshot;
+            // applying them would revert the mode shown on the dashboard after a tray switch.
+            if (busyAtStart || IsHardwareBusy || startedUtc <= _lastHardwareWriteUtc ||
+                _latestThermalSnapshot?.CapturedAtUtc > snap.CapturedAtUtc)
+                return;
+            if (!snap.IsVerifiedLiveRead && _latestThermalSnapshot is { IsVerifiedLiveRead: true } latest)
+            {
+                LiveThermalNoteText = Loc.Format("MsgPowerLastRead", latest.CapturedAtUtc.LocalDateTime.ToString("HH:mm:ss"), snap.StatusNote);
+                if (allowElevation)
+                    StatusMessage = snap.StatusNote;
+                return;
+            }
+
+            ApplyThermalSnapshotToUi(snap);
+            if (allowElevation && !snap.IsVerifiedLiveRead)
+                StatusMessage = snap.StatusNote;
+        }).ConfigureAwait(false);
+    }
+
+    private async Task ApplyProfilePowerAsync(string profileId)
+    {
+        await RunQuickHardwareAsync(async () =>
+        {
+            var outcome = await _writeCoordinator.ApplyOwnerPowerPresetAsync(profileId);
+            if (!outcome.Success || outcome.Value is null)
+            {
+                RaisePropertyChanged(nameof(ActiveProfileId));
+                return DescribeQuickFailure(outcome);
+            }
+
+            SelectProfile(profileId);
+            ApplyThermalSnapshotToUi(outcome.Value);
+            return Loc.Format("MsgProfileApplied", SelectedProfileDisplayName);
+        });
+    }
+
+    private async Task StartCoolingAsync()
+    {
+        using var stop = new CancellationTokenSource();
+        _coolingStop = stop;
+        StopCoolingCommand.RaiseCanExecuteChanged();
+        StatusMessage = Loc.Get("MsgCoolingInProgress");
+        try
+        {
+            await RunQuickHardwareAsync(async () =>
+            {
+                var outcome = await _writeCoordinator.RunCoolingCycleAsync(stop.Token);
+                if (!outcome.Success || outcome.Value is not { } cycle)
+                    return DescribeQuickFailure(outcome);
+                var reason = Loc.Get($"CoolingStop{cycle.Reason}");
+                static string FormatTemperature(int? value) => value is int degrees ? $"{degrees} °C" : "—";
+                return Loc.Format("MsgCoolingComplete", reason,
+                    FormatTemperature(cycle.Start.CpuC), FormatTemperature(cycle.End.CpuC),
+                    FormatTemperature(cycle.Start.GpuC), FormatTemperature(cycle.End.GpuC));
+            });
+        }
+        finally
+        {
+            _coolingStop = null;
+            StopCoolingCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    public void StopCooling()
+    {
+        _coolingStop?.Cancel();
+        StopCoolingCommand.RaiseCanExecuteChanged();
+    }
+
+    private async Task RunQuickHardwareAsync(Func<Task<string>> action)
+    {
+        IsHardwareBusy = true;
+        try
+        {
+            ReportQuickAction(await action());
+        }
+        catch (Exception ex)
+        {
+            ReportQuickAction(Loc.Format("MsgActionFailed", ex.Message));
+        }
+        finally
+        {
+            try
+            {
+                if (await _writeCoordinator.GetInterruptedOperationAsync() is { } interrupted)
+                {
+                    _interruptedOpId = interrupted.OperationId;
+                    HasInterruptedOperation = true;
+                    InterruptedOperationSummary = $"{interrupted.OperationType} ({interrupted.TargetDescription})";
+                }
+            }
+            finally
+            {
+                _lastHardwareWriteUtc = DateTimeOffset.UtcNow;
+                IsHardwareBusy = false;
+            }
+        }
+    }
+
+    private static string DescribeQuickFailure<T>(OperationResult<T> outcome) => outcome.ErrorCode switch
+    {
+        "USER_CANCELLED" => Loc.Get("MsgQuickCancelled"),
+        "COOLING_REQUIRES_AC" => Loc.Get("MsgCoolingAcRequired"),
+        "COOLING_UNAVAILABLE" or "COOLING_SENSOR_UNAVAILABLE" => Loc.Get("MsgCoolingUnavailable"),
+        "COOLING_ALREADY_ACTIVE" => Loc.Get("MsgCoolingAlreadyActive"),
+        _ => Loc.Format("MsgActionFailed", outcome.Message)
+    };
+
+    private void ReportQuickAction(string status)
+    {
+        StatusMessage = status;
+        QuickActionCompleted?.Invoke(status);
     }
 
     private void ApplyThermalSnapshotToUi(LiveThermalSnapshot snap)
     {
         _latestThermalSnapshot = snap;
-        var matchedProfile = _settings.Profiles.FirstOrDefault(p =>
-            ProfileValidationService.DoesLiveMatchProfile(snap, p, _settings.FieldContracts));
-        var modeLabel = matchedProfile is not null
-            ? $"{snap.ThermalMode} ({matchedProfile.Name})"
-            : snap.IsVerifiedLiveRead ? snap.ThermalMode.ToString() : $"{Loc.Get("LblUnavailable")} ({snap.StatusNote})";
-
-        LiveThermalModeText = modeLabel;
-        LiveWindowsPowerModeText = $"{snap.WindowsPowerMode} ({snap.ActivePowerSchemeName})";
+        RaisePropertyChanged(nameof(ActiveProfileId));
+        LiveThermalModeText = snap.MatchedProfileId switch
+        {
+            ProfileSeedFactory.DailyId => Loc.Get("ProfileDailyName"),
+            ProfileSeedFactory.GamingId => Loc.Get("ProfileGamingName"),
+            _ => snap.IsVerifiedLiveRead ? snap.ThermalMode.ToString() : Loc.Get(!_isElevated && !_monitorHasSample ? "LblNeedsAdmin" : "LblUnavailable")
+        };
+        LiveThermalNoteText = snap.LivePowerValues is not null
+            ? Loc.Format("MsgPowerLiveRead", snap.CapturedAtUtc.LocalDateTime.ToString("HH:mm:ss"))
+            : snap.IsVerifiedLiveRead ? Loc.Get("MsgPowerCustomOnly") : snap.StatusNote;
+        // Show only the active power plan's own (localized) name, e.g. "平衡".
+        LiveWindowsPowerModeText = string.IsNullOrWhiteSpace(snap.ActivePowerSchemeName) ? "--" : snap.ActivePowerSchemeName;
         LiveAcStateText = snap.IsOnAcPower ? Loc.Get("MsgAcOnline") : Loc.Get("MsgOnBattery");
+        IsOnAcPower = snap.IsOnAcPower;
 
         var liveMap = snap.LivePowerValues?.AsFieldMap();
         foreach (var row in ProfileFields)
@@ -643,22 +925,29 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             }
         }
 
-        var current = _settings.Profiles.FirstOrDefault(p => p.Id == SelectedProfileId);
-        if (current is not null)
-        {
-            EvaluateProfileApplyButtons(current);
-        }
     }
 
     private async Task RefreshBatteryAsync()
     {
-        var snap = await _battery.ReadStatusAsync().ConfigureAwait(false);
+        var snap = await _battery.ReadStatusAsync(_lifetime.Token).ConfigureAwait(false);
         await RunOnUiAsync(() =>
         {
-            _isConservationSupported = snap.IsConservationWriteSupported;
-            IsConservationEnabled = snap.LenovoChargeMode == BatteryChargeMode.Conservation;
+            if (_batterySnapshot is { } current && current.CapturedAtUtc > snap.CapturedAtUtc)
+                return;
+            _batterySnapshot = snap;
+            RaisePropertyChanged(nameof(CanSetConservation));
+            SetConservationCommand.RaiseCanExecuteChanged();
             BatteryChargeText = snap.ChargePercent is not null ? $"{snap.ChargePercent}%" : Loc.Get("LblUnavailable");
-            BatteryActivityText = $"{snap.Activity} ({(snap.IsAcOnline ? Loc.Get("MsgAcOnline") : Loc.Get("MsgOnBattery"))})";
+            BatteryChargePercent = snap.ChargePercent is { } pct ? pct : double.NaN;
+            IsOnAcPower = snap.IsAcOnline;
+            BatteryActivityText = snap.Activity switch
+            {
+                BatteryChargeActivity.Charging => Loc.Get("MsgBatteryCharging"),
+                BatteryChargeActivity.Critical => Loc.Get("MsgBatteryCritical"),
+                BatteryChargeActivity.Discharging => Loc.Get("MsgOnBattery"),
+                BatteryChargeActivity.IdleOnAc => Loc.Get("MsgAcOnline"),
+                _ => Loc.Get(snap.IsAcOnline ? "MsgAcOnline" : "MsgOnBattery")
+            };
             BatteryHealthText = snap.HealthPercent is not null ? $"{snap.HealthPercent:F2}%" : Loc.Get("LblUnavailable");
             BatteryDesignCapText = snap.DesignCapacityMwh is not null ? $"{snap.DesignCapacityMwh:N0} mWh" : Loc.Get("LblUnavailable");
             BatteryFullCapText = snap.FullChargeCapacityMwh is not null ? $"{snap.FullChargeCapacityMwh:N0} mWh" : Loc.Get("LblUnavailable");
@@ -667,218 +956,488 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             {
                 BatteryChargeMode.Conservation => Loc.Get("MsgConservationOn"),
                 BatteryChargeMode.RapidCharge => Loc.Get("MsgRapidCharge"),
-                BatteryChargeMode.Normal => Loc.Get("MsgConservationOff"),
+                BatteryChargeMode.Normal => string.Empty,
                 _ => Loc.Get("LblUnavailable")
             };
             BatteryRawDetailText = snap.ProviderNote;
-            ToggleConservationCommand.RaiseCanExecuteChanged();
+            RaisePropertyChanged(nameof(BatteryConservationEnabled));
         }).ConfigureAwait(false);
     }
 
-    private async Task ToggleConservationAsync()
+    public bool CanSetConservation => _batterySnapshot?.IsConservationWriteSupported == true;
+
+    /// <summary>Two-way state for the conservation toggle; setting it runs the firmware write, then re-reads.</summary>
+    public bool BatteryConservationEnabled
     {
-        var target = !IsConservationEnabled;
-        var res = await _battery.SetConservationModeAsync(target).ConfigureAwait(false);
-        await RefreshBatteryAsync().ConfigureAwait(false);
-        await RunOnUiAsync(() => StatusMessage = res.Message).ConfigureAwait(false);
+        get => _batterySnapshot?.LenovoChargeMode == BatteryChargeMode.Conservation;
+        set
+        {
+            var parameter = value ? "on" : "off";
+            if (value != BatteryConservationEnabled && SetConservationCommand.CanExecute(parameter))
+                SetConservationCommand.Execute(parameter);
+            else
+                RaisePropertyChanged(); // snap the toggle back to the real state
+        }
     }
+    private bool BatteryIsConservationOff => _batterySnapshot?.LenovoChargeMode != BatteryChargeMode.Conservation;
+
+    private Task SetConservationAsync(bool enabled) => RunQuickHardwareAsync(async () =>
+    {
+        var outcome = await _battery.SetConservationModeAsync(enabled, _lifetime.Token);
+        await RefreshBatteryAsync();
+        return outcome.Success
+            ? Loc.Get(enabled ? "MsgConservationOn" : "MsgConservationDisabled")
+            : DescribeQuickFailure(outcome);
+    });
 
     private async Task RefreshTelemetryAsync(bool allowWakeDgpu)
     {
-        var snap = await _telemetry.ReadSnapshotAsync(allowWakeDgpu || !PauseGpuOnBattery).ConfigureAwait(false);
-        await RunOnUiAsync(() =>
+        if (_disposed)
+            return;
+
+        var ct = _lifetime.Token;
+        if (allowWakeDgpu)
+            await _telemetryGate.WaitAsync(ct);
+        else if (!await _telemetryGate.WaitAsync(0, ct))
+            return;
+
+        try
         {
-            CpuUsageText = FormatReading(snap.CpuUtilization, "F1");
-            CpuTempText = FormatReading(snap.CpuTemperature, "F0");
-            MemoryUsageText = snap.MemoryUsedGb.Status == SensorStatus.Valid && snap.MemoryTotalGb.Status == SensorStatus.Valid
-                ? $"{snap.MemoryUsedGb.Value:F1} / {snap.MemoryTotalGb.Value:F1} GB ({snap.MemoryUsedPercent.Value:F0}%)"
-                : Loc.Get("LblUnavailable");
-            DiskActivityText = snap.DiskActivePercent.Status == SensorStatus.Valid
-                ? $"{snap.DiskActivePercent.Value:F1}% | {snap.DiskThroughputMbPerSec.Value:F2} MB/s"
-                : $"{snap.DiskActivePercent.Status} ({snap.DiskActivePercent.Note})";
+            var allowGpuQuery = allowWakeDgpu || !PauseGpuOnBattery;
+            var graphicsMode = _settings.PendingGraphicsMode ?? _graphicsSnapshot?.PendingMode ??
+                               _graphicsSnapshot?.EffectiveMode ?? _settings.LastVerifiedGraphicsMode;
+            var pauseDgpu = graphicsMode == GraphicsRoutingMode.HybridIgpuOnly ||
+                _graphicsSnapshot is { IsVerifiedLiveRead: true, EffectiveMode: GraphicsRoutingMode.HybridIgpuOnly };
+            var snap = await Task.Run(() => _telemetry.ReadSnapshotAsync(allowGpuQuery, ct, pauseDgpu), ct).ConfigureAwait(false);
+            if (ct.IsCancellationRequested)
+                return;
 
-            DiskCapacities.Clear();
-            foreach (var d in snap.DiskCapacities)
+            await RunOnUiAsync(() =>
             {
-                DiskCapacities.Add(d);
-            }
+                _lastDetailTick = Environment.TickCount64;
+                CpuPowerText = snap.CpuPowerWatts is { } cpuPower ? FormatReading(cpuPower, "F1") : "--";
+                if (!_monitorHasSample)
+                {
+                    CpuTempText = FormatReading(snap.CpuTemperature, "F0");
+                    CpuFanRpmText = FormatReading(snap.CpuFanRpm, "D");
+                    GpuFanRpmText = FormatReading(snap.GpuFanRpm, "D");
+                }
+                DiskActivityText = snap.DiskActivePercent.Status == SensorStatus.Valid
+                    ? $"{snap.DiskActivePercent.Value:F1}% | {snap.DiskThroughputMbPerSec.Value:F2} MB/s"
+                    : "--";
 
-            GpuNameText = snap.GpuName ?? "NVIDIA RTX (dGPU)";
-            GpuUtilText = FormatReading(snap.GpuUtilization, "F0");
-            GpuTempText = FormatReading(snap.GpuTemperature, "F0");
-            GpuPowerText = FormatReading(snap.GpuPowerWatts, "F1");
-            GpuVramText = snap.GpuMemoryUsedMb.Status == SensorStatus.Valid
-                ? $"{snap.GpuMemoryUsedMb.Value:F0} / {snap.GpuMemoryTotalMb.Value:F0} MB"
-                : FormatReading(snap.GpuMemoryUsedMb, "F0");
-            GpuPstateText = snap.GpuPowerState ?? "--";
-            CpuFanRpmText = FormatReading(snap.CpuFanRpm, "D");
-            GpuFanRpmText = FormatReading(snap.GpuFanRpm, "D");
-            TelemetryTimestampText = snap.CapturedAtUtc.LocalDateTime.ToString("HH:mm:ss");
-        }).ConfigureAwait(false);
+                if (!DiskCapacities.SequenceEqual(snap.DiskCapacities))
+                {
+                    DiskCapacities.Clear();
+                    foreach (var disk in snap.DiskCapacities)
+                        DiskCapacities.Add(disk);
+                }
+
+                GpuNameText = snap.GpuName ?? "NVIDIA RTX (dGPU)";
+                GpuUtilText = FormatReading(snap.GpuUtilization, "F0");
+                GpuTempText = FormatReading(snap.GpuTemperature, "F0");
+                GpuPowerText = FormatReading(snap.GpuPowerWatts, "F1");
+                GpuVramText = snap.GpuMemoryUsedMb.Status == SensorStatus.Valid && snap.GpuMemoryTotalMb.Status == SensorStatus.Valid
+                    ? $"{snap.GpuMemoryUsedMb.Value:F0} / {snap.GpuMemoryTotalMb.Value:F0} MB"
+                    : FormatReading(snap.GpuMemoryUsedMb, "F0");
+                GpuPstateText = snap.GpuPowerState ?? "--";
+                GpuUtilPercent = ValueOrNaN(snap.GpuUtilization);
+                DiskActivePercent = ValueOrNaN(snap.DiskActivePercent);
+                GpuHistory = Push(_gpuHistoryBuffer, GpuUtilPercent);
+            }).ConfigureAwait(false);
+        }
+        finally
+        {
+            _telemetryGate.Release();
+        }
     }
+
+    private static double ValueOrNaN(SensorReading<double> reading) =>
+        reading.Status == SensorStatus.Valid && reading.Value is { } v ? v : double.NaN;
+
+    private static IReadOnlyList<double> Push(Queue<double> buffer, double value)
+    {
+        if (buffer.Count == 0 && !double.IsFinite(value))
+            return [];
+
+        buffer.Enqueue(value);
+        while (buffer.Count > HistoryCapacity)
+            buffer.Dequeue();
+        return buffer.ToArray();
+    }
+
+    private async Task RefreshAllAsync()
+    {
+        ReadQuickMetrics();
+        await Task.WhenAll(RefreshThermalAsync(false), RefreshBatteryAsync(), RefreshTelemetryAsync(true));
+        await RunOnUiAsync(() => StatusMessage = Loc.Format("MsgRefreshedAt", DateTime.Now.ToString("HH:mm:ss"))).ConfigureAwait(false);
+    }
+
+    private static string DisplayUnit(string unit) => unit == "C" ? "°C" : unit;
 
     private static string FormatReading<T>(SensorReading<T> reading, string format) where T : struct =>
         reading.Status switch
         {
-            SensorStatus.Valid when reading.Value is double d => $"{d.ToString(format)} {reading.Unit}",
-            SensorStatus.Valid when reading.Value is int i => $"{i} {reading.Unit}",
+            SensorStatus.Valid when reading.Value is double d => $"{d.ToString(format)} {DisplayUnit(reading.Unit)}",
+            SensorStatus.Valid when reading.Value is int i => $"{i} {DisplayUnit(reading.Unit)}",
             SensorStatus.PausedOnBattery => Loc.Get("MsgPausedOnBattery"),
-            SensorStatus.Stale => $"Stale ({reading.Note})",
-            SensorStatus.Sleeping => "Sleeping",
-            _ => $"{Loc.Get("LblUnavailable")} ({reading.Note ?? reading.Source})"
+            SensorStatus.PausedInIntegratedMode => Loc.Get("MsgPausedInIntegratedMode"),
+            SensorStatus.RequiresElevation => Loc.Get("LblNeedsAdmin"),
+            SensorStatus.Stale or SensorStatus.Sleeping => "--",
+            _ => Loc.Get("LblUnavailable")
         };
 
     private async Task RefreshGraphicsAsync(bool allowElevation)
     {
-        var snap = await _hardware.ReadGraphicsStatusAsync(allowElevation).ConfigureAwait(false);
+        var snap = await _hardware.ReadGraphicsStatusAsync(allowElevation, _lifetime.Token).ConfigureAwait(false);
         await RunOnUiAsync(() =>
         {
-            EffectiveGraphicsText = snap.IsVerifiedLiveRead ? snap.EffectiveMode.ToString() : Loc.Get("LblUnavailable");
-            PendingGraphicsText = snap.PendingMode?.ToString() ?? "--";
-            HasPendingGraphicsReboot = snap.RebootRequired;
-            GraphicsNoteText = snap.StatusNote;
-
-            SupportedGraphicsModes.Clear();
-            foreach (var mode in snap.SupportedModes)
-            {
-                SupportedGraphicsModes.Add(mode);
-            }
+            if (!allowElevation && snap.StatusNote == "GRAPHICS_REQUIRES_ADMIN" && _graphicsSnapshot is not null)
+                return;
+            SetGraphicsSnapshot(snap);
         }).ConfigureAwait(false);
+    }
+
+    /// <summary>The two user-facing choices: 独显 (DgpuOnly) and 核显 (HybridIgpuOnly).</summary>
+    private static readonly GraphicsRoutingMode[] SwitchableGraphicsModes = [GraphicsRoutingMode.DgpuOnly, GraphicsRoutingMode.HybridIgpuOnly];
+
+    private GraphicsRoutingMode? CurrentGraphicsMode =>
+        _graphicsSnapshot is { IsVerifiedLiveRead: true } snap ? snap.PendingMode ?? snap.EffectiveMode : null;
+
+    private static string GraphicsOptionName(GraphicsRoutingMode mode) => mode switch
+    {
+        GraphicsRoutingMode.DgpuOnly => Loc.Get("GraphicsOptionDgpu"),
+        GraphicsRoutingMode.HybridIgpuOnly => Loc.Get("GraphicsOptionHybrid"),
+        _ => Loc.Get($"GraphicsMode{mode}")
+    };
+
+    /// <summary>
+    /// Choices shown in the picker: 独显 / 核显 minus the mode already in use. When the current mode is
+    /// not known yet (standard user), both are offered; switching reads it with elevation first.
+    /// </summary>
+    public IReadOnlyList<GraphicsModeOption> GraphicsModes
+    {
+        get
+        {
+            var supported = _graphicsSnapshot is { IsVerifiedLiveRead: true } snap ? snap.SupportedModes : null;
+            var current = CurrentGraphicsMode;
+            return SwitchableGraphicsModes
+                .Where(mode => mode != current && (supported is null || supported.Any(o => o.Mode == mode)))
+                .Select(mode => new GraphicsModeOption(mode, true, true, true, GraphicsOptionName(mode)))
+                .ToArray();
+        }
+    }
+
+    public bool HasGraphicsModes => GraphicsModes.Count > 0;
+
+    public GraphicsModeOption? SelectedGraphicsMode
+    {
+        get => _selectedGraphicsMode;
+        set
+        {
+            if (SetField(ref _selectedGraphicsMode, value))
+                ApplyGraphicsModeCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    private void SetGraphicsSnapshot(GraphicsStatusSnapshot snap)
+    {
+        if (_settings.PendingGraphicsMode is { } pending &&
+            _settings.PendingGraphicsBootSession is { } submittedBoot)
+        {
+            if (!snap.IsVerifiedLiveRead || snap.BootSession is null)
+            {
+                snap = snap with { PendingMode = pending, RebootRequired = true };
+            }
+            else if (submittedBoot == snap.BootSession && pending != snap.EffectiveMode)
+            {
+                snap = snap with { PendingMode = pending, RebootRequired = true };
+            }
+            else if (snap.BootSession is not null && submittedBoot != snap.BootSession)
+            {
+                if (pending != snap.EffectiveMode && pending != snap.PendingMode)
+                    snap = snap with { StatusNote = Loc.Format("MsgGraphicsBootMismatch", Loc.Get($"GraphicsMode{pending}")) };
+                _ = RunSafelyAsync(() => UpdateSettingsAsync(settings =>
+                    settings.PendingGraphicsBootSession != submittedBoot || settings.PendingGraphicsMode != pending
+                        ? settings
+                        : settings with
+                        {
+                            PendingGraphicsMode = null,
+                            PendingGraphicsBootSession = null,
+                            LastVerifiedGraphicsMode = snap.EffectiveMode
+                        }));
+            }
+        }
+
+        _graphicsSnapshot = snap with
+        {
+            SupportedModes = snap.SupportedModes.Select(option => option with
+            {
+                Description = Loc.Get($"GraphicsMode{option.Mode}")
+            }).ToArray()
+        };
+        EffectiveGraphicsText = snap.IsVerifiedLiveRead ? Loc.Get($"GraphicsMode{snap.EffectiveMode}") : Loc.Get("LblUnavailable");
+        PendingGraphicsText = snap.PendingMode is { } displayedPending ? Loc.Get($"GraphicsMode{displayedPending}") : "—";
+        HasPendingGraphicsReboot = snap.RebootRequired;
+        GraphicsNoteText = snap.StatusNote switch
+        {
+            "GRAPHICS_REQUIRES_ADMIN" => string.Empty,
+            "GRAPHICS_UNSUPPORTED" => Loc.Get("MsgGraphicsUnsupported"),
+            "GRAPHICS_UNAVAILABLE" => Loc.Get("LblUnavailable"),
+            "USER_CANCELLED" => Loc.Get("MsgSensorsDenied"),
+            _ => snap.StatusNote
+        };
+        RaisePropertyChanged(nameof(GraphicsModes));
+        RaisePropertyChanged(nameof(HasGraphicsModes));
+        SelectedGraphicsMode = GraphicsModes.FirstOrDefault();
+        ApplyGraphicsModeCommand.RaiseCanExecuteChanged();
     }
 
     private async Task ApplyGraphicsModeAsync()
     {
-        var res = await _hardware.SetGraphicsModeAsync(SelectedTargetGraphicsMode).ConfigureAwait(false);
-        await RunOnUiAsync(() => StatusMessage = res.Message).ConfigureAwait(false);
-        await RefreshGraphicsAsync(allowElevation: false).ConfigureAwait(false);
-    }
+        if (SelectedGraphicsMode is not { } option)
+            return;
+        var modeName = GraphicsOptionName(option.Mode);
 
-    private async Task RefreshSoftwareAsync(bool includeLeftovers)
-    {
-        var snap = await _software.ScanAsync(includeLeftovers).ConfigureAwait(false);
-        await RunOnUiAsync(() =>
+        // Standard users cannot read the current mode; read it with elevation now (one UAC prompt).
+        if (_graphicsSnapshot?.IsVerifiedLiveRead != true)
         {
-            _allApps = snap.InstalledApps;
-            ApplyAppFilter();
-
-            StartupEntries.Clear();
-            foreach (var entry in snap.StartupEntries)
+            await RefreshGraphicsAsync(allowElevation: true);
+            if (_graphicsSnapshot?.IsVerifiedLiveRead != true)
+                return;
+            if (option.Mode == CurrentGraphicsMode)
             {
-                StartupEntries.Add(entry);
-            }
-
-            if (includeLeftovers)
-            {
-                LeftoverFindings.Clear();
-                foreach (var finding in snap.LenovoFindings)
-                {
-                    LeftoverFindings.Add(finding);
-                }
-            }
-
-            SoftwareSummaryText = $"Apps: {snap.InstalledApps.Count} | Startup: {snap.StartupEntries.Count} | Lenovo Findings: {LeftoverFindings.Count}";
-        }).ConfigureAwait(false);
-    }
-
-    private void ApplyAppFilter()
-    {
-        FilteredApps.Clear();
-        var q = AppSearchText?.Trim() ?? string.Empty;
-        foreach (var app in _allApps)
-        {
-            if (string.IsNullOrEmpty(q) ||
-                app.DisplayName.Contains(q, StringComparison.OrdinalIgnoreCase) ||
-                app.Publisher.Contains(q, StringComparison.OrdinalIgnoreCase))
-            {
-                FilteredApps.Add(app);
+                StatusMessage = Loc.Format("MsgGraphicsAlreadyActive", modeName);
+                return;
             }
         }
+
+        if (MessageBox.Show(Application.Current.MainWindow, Loc.Format("MsgGraphicsConfirm", modeName),
+                Loc.Get("GraphicsHeader"), MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
+            return;
+
+        await RunQuickHardwareAsync(async () =>
+        {
+            var outcome = await _hardware.SetGraphicsModeAsync(option.Mode, _lifetime.Token);
+            if (!outcome.Success || outcome.Value is not { } updated)
+            {
+                if (outcome.ErrorCode is "ROLLED_BACK" or "RESTORE_UNVERIFIED")
+                {
+                    await UpdateSettingsAsync(settings => settings with { PendingGraphicsMode = null, PendingGraphicsBootSession = null });
+                    SetGraphicsSnapshot(new GraphicsStatusSnapshot(GraphicsRoutingMode.Unknown, null, false, [], false,
+                        Loc.Get("MsgGraphicsAuthorize"), DateTimeOffset.UtcNow));
+                }
+                return DescribeQuickFailure(outcome);
+            }
+
+            await UpdateSettingsAsync(settings => settings with
+            {
+                PendingGraphicsMode = updated.RebootRequired ? updated.PendingMode : null,
+                PendingGraphicsBootSession = updated.RebootRequired ? updated.BootSession : null,
+                LastVerifiedGraphicsMode = updated.IsVerifiedLiveRead ? updated.EffectiveMode : settings.LastVerifiedGraphicsMode
+            });
+            SetGraphicsSnapshot(updated);
+            return Loc.Format(updated.PendingMode is null ? "MsgGraphicsApplied" :
+                updated.RebootRequired ? "MsgGraphicsQueued" : "MsgGraphicsWaitingForWindows", modeName);
+        });
+    }
+
+    private async Task RefreshSoftwareAsync()
+    {
+        var entries = await _software.ReadStartupEntriesAsync(_lifetime.Token).ConfigureAwait(false);
+        await RunOnUiAsync(() =>
+        {
+            StartupEntries = entries.Select(entry => new StartupEntryRow(entry, SetStartupEntryEnabledAsync)).ToList();
+            RaisePropertyChanged(nameof(StartupEntries));
+        });
+    }
+
+    /// <summary>Applies a startup switch flip; returning false makes the row's switch snap back.</summary>
+    private async Task<bool> SetStartupEntryEnabledAsync(StartupEntryRow row, bool enabled)
+    {
+        var result = await _software.SetStartupEntryEnabledAsync(row.Entry, enabled, _lifetime.Token);
+        StatusMessage = result.Success
+            ? Loc.Format(enabled ? "MsgStartupEnabled" : "MsgStartupDisabled", row.Name)
+            : result.WasCancelledByUser
+                ? Loc.Format("MsgStartupCancelled", row.Name)
+                : Loc.Format("MsgStartupFailed", row.Name, result.Message);
+        return result.Success;
+    }
+
+    private void AddFanChannel()
+    {
+        var id = FanChannels.Count == 0 ? 1 : FanChannels.Max(channel => channel.Id) + 1;
+        var channel = new FanChannelDraft { Id = id, Name = Loc.Format("FanChannelName", id) };
+        FanChannels.Add(channel);
+        SelectedFanChannel = channel;
     }
 
     private void AddFanPoint()
     {
-        var nextTemp = FanPoints.Count == 0 ? 40 : Math.Min(100, FanPoints[^1].TemperatureC + 10);
-        var nextSpeed = FanPoints.Count == 0 ? 1800 : Math.Min(5400, FanPoints[^1].FanSpeedValue + 400);
-        FanPoints.Add(new FanPointRow { TemperatureC = nextTemp, FanSpeedValue = nextSpeed, SpeedUnit = "RPM" });
+        if (SelectedFanChannel is null)
+            AddFanChannel();
+
+        SelectedFanChannel!.Points.Add(new FanPointRow());
         UpdateFanCurvePreview();
     }
 
     private void UpdateFanCurvePreview()
     {
-        var pts = new PointCollection();
-        const double width = 420.0;
-        const double height = 180.0;
-        const double minT = 30.0, maxT = 100.0;
-        const double minRpm = 0.0, maxRpm = 5600.0;
-
-        foreach (var row in FanPoints.OrderBy(p => p.TemperatureC))
+        var points = new PointCollection();
+        var channel = SelectedFanChannel?.ToDraftCurve();
+        if (channel is null || channel.Points.Count == 0)
         {
-            var x = Math.Clamp((row.TemperatureC - minT) / (maxT - minT), 0.0, 1.0) * width;
-            var y = height - Math.Clamp((row.FanSpeedValue - minRpm) / (maxRpm - minRpm), 0.0, 1.0) * height;
-            pts.Add(new Point(x, y));
+            FanPreviewPoints = points;
+            FanValidationText = string.Empty; // the page banner already explains the pending capture
+            return;
         }
 
-        FanPreviewPoints = pts;
-        var profile = _settings.Profiles.FirstOrDefault(p => p.Id == SelectedProfileId);
-        if (profile is not null && FanPoints.Count > 0)
+        const double width = 420, height = 180;
+        var minTemperature = Math.Min(30, channel.Points.Min(point => point.TemperatureC));
+        var maxTemperature = Math.Max(100, channel.Points.Max(point => point.TemperatureC));
+        var maxSpeed = Math.Max(1, channel.SpeedUnit == "%" ? 100 : channel.Points.Max(point => point.FanSpeedValue));
+        foreach (var point in channel.Points)
         {
-            var channel = new FanChannelCurve(
-                0, "Preview Channel", "CPU",
-                FanPoints.Select(p => new FanCurvePoint(p.TemperatureC, p.FanSpeedValue, p.SpeedUnit)).ToList(),
-                30, 100, 1, 0, 5600, 100, "RPM");
-            var val = _validator.ValidateFanCurve(new FanCurveProfile(FanCurveStatus.Captured, "Draft editor", [channel]));
-            FanValidationText = val.IsValid ? "Draft curve geometry valid (pending firmware capture/write validation)." : string.Join(" | ", val.Errors);
+            var x = (point.TemperatureC - (double)minTemperature) / (maxTemperature - (double)minTemperature) * width;
+            var y = height - Math.Clamp(point.FanSpeedValue / (double)maxSpeed, 0, 1) * height;
+            points.Add(new Point(x, y));
         }
-        else
+
+        FanPreviewPoints = points;
+        var result = _validator.ValidateFanCurve(new FanCurveProfile(FanCurveStatus.Captured, "Manual draft", [channel]));
+        FanValidationText = result.IsValid ? Loc.Get("MsgFanDraftGeometryValid") : string.Join(" | ", result.Errors);
+    }
+
+    private async Task SaveFanDraftAsync()
+    {
+        var profileId = SelectedProfileId;
+        var channels = FanChannels.Select(channel => channel.ToDraftCurve()).ToArray();
+        var curve = channels.Length == 0
+            ? new FanCurveProfile(FanCurveStatus.PendingCapture, "No firmware fan table saved for this profile", [])
+            : new FanCurveProfile(FanCurveStatus.Captured, "Manual capture. Firmware bounds and identity not verified.", channels);
+
+        if (channels.Length > 0)
         {
-            FanValidationText = Loc.Get("MsgPendingFanCapture");
+            var result = _validator.ValidateFanCurve(curve);
+            if (!result.IsValid)
+            {
+                FanValidationText = string.Join(" | ", result.Errors);
+                return;
+            }
         }
+
+        await UpdateSettingsAsync(settings => settings with
+        {
+            ActiveSelectedProfileId = profileId,
+            Profiles = settings.Profiles.Select(profile => profile.Id == profileId
+                ? profile with { FanCurve = curve, LastModifiedUtc = DateTimeOffset.UtcNow }
+                : profile).ToArray()
+        });
+        if (SelectedProfileId == profileId)
+        {
+            FanStatusBannerText = channels.Length == 0
+                ? Loc.Get("MsgPendingFanCapture")
+                : $"{profileId}: {Loc.Get("MsgFanDraftSaved")}";
+        }
+
+        StatusMessage = Loc.Get("MsgFanDraftSaved");
     }
 
     private async Task ReadFanFromFirmwareAsync()
     {
-        var res = await _hardware.ReadFanCurveAsync(allowElevation: true).ConfigureAwait(false);
-        await RunOnUiAsync(() =>
+        var profileId = SelectedProfileId;
+        var res = await _hardware.ReadFanCurveAsync(allowElevation: true);
+        StatusMessage = res.Message;
+        if (SelectedProfileId != profileId)
+            return;
+
+        _liveFanCapture = res.Success ? res.Value?.LiveCapture : null;
+        SaveFanCaptureCommand.RaiseCanExecuteChanged();
+        ApplyFanLevelsCommand.RaiseCanExecuteChanged();
+        if (_liveFanCapture is not null)
         {
-            StatusMessage = res.Message;
-            if (res.Success && res.Value is not null)
+            FanStages = _liveFanCapture.Stages;
+            FanLevelText = string.Join(", ", FanStages.Select(stage => stage.SpeedLevel));
+            FanCaptureStatus = Loc.Get("FanCaptureLive");
+        }
+        else
+        {
+            var saved = _settings.Profiles.FirstOrDefault(profile => profile.Id == profileId)?.CapturedLegionFanTable;
+            FanStages = (saved ?? LenovoFanCapture.OwnerReference).Stages;
+            FanCaptureStatus = Loc.Get(saved is null ? "FanCaptureReference" : "FanCaptureSaved");
+        }
+
+        FirmwareFanTableText = res.Value is { } curve
+            ? string.Join(Environment.NewLine, curve.Channels.Select(channel =>
+                $"{channel.ChannelName} / {channel.SensorName}: " +
+                string.Join(", ", channel.Points.Select(point => $"{point.TemperatureC}={point.FanSpeedValue}"))))
+            : string.Empty;
+    }
+
+    private async Task ApplyFanLevelsAsync(bool restoreReference)
+    {
+        var levels = restoreReference
+            ? LenovoFanCapture.OwnerReference.Stages.Select(stage => stage.SpeedLevel).ToArray()
+            : FanLevelText.Split([',', '，', ' '], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Select(value => int.TryParse(value, out var level) ? level : -1).ToArray();
+        if (!LenovoFanCapture.AreWritableLevels(levels))
+        {
+            StatusMessage = Loc.Get("MsgFanInvalidLevels");
+            return;
+        }
+
+        if (restoreReference && MessageBox.Show(Application.Current.MainWindow, Loc.Get("MsgFanRestoreReference"),
+                Loc.Get("FanHeader"), MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
+            return;
+
+        await RunQuickHardwareAsync(async () =>
+        {
+            var outcome = await _hardware.SetFanSpeedLevelsAsync(levels, _lifetime.Token);
+            if (!outcome.Success || outcome.Value?.LiveCapture is not { } capture)
             {
-                FanPoints.Clear();
-                var ch = res.Value.Channels.FirstOrDefault();
-                if (ch is not null)
+                if (outcome.ErrorCode == "RESTORE_UNVERIFIED")
                 {
-                    foreach (var pt in ch.Points)
-                    {
-                        FanPoints.Add(new FanPointRow { TemperatureC = pt.TemperatureC, FanSpeedValue = pt.FanSpeedValue, SpeedUnit = pt.SpeedUnit });
-                    }
+                    _liveFanCapture = null;
+                    FanCaptureStatus = Loc.Get("MsgFanReadAgain");
+                    SaveFanCaptureCommand.RaiseCanExecuteChanged();
+                    ApplyFanLevelsCommand.RaiseCanExecuteChanged();
                 }
-
-                FanStatusBannerText = $"{res.Value.Status}: {res.Value.SourceDescription}";
-                UpdateFanCurvePreview();
+                return DescribeQuickFailure(outcome);
             }
-        }).ConfigureAwait(false);
+            _liveFanCapture = capture;
+            FanStages = capture.Stages;
+            FanLevelText = string.Join(", ", levels);
+            FanCaptureStatus = Loc.Get("FanCaptureLive");
+            SaveFanCaptureCommand.RaiseCanExecuteChanged();
+            return Loc.Get("MsgFanLevelsApplied");
+        });
     }
 
-    private async Task ApplyFanCurveAsync()
+    private async Task SaveFanCaptureAsync()
     {
-        var channel = new FanChannelCurve(
-            0, "CPU/GPU", "CPU",
-            FanPoints.Select(p => new FanCurvePoint(p.TemperatureC, p.FanSpeedValue, p.SpeedUnit)).ToList(),
-            30, 100, 1, 0, 5600, 100);
-        var curve = new FanCurveProfile(FanCurveStatus.Captured, "User draft", [channel]);
-        var res = await _hardware.ApplyFanCurveAsync(curve).ConfigureAwait(false);
-        await RunOnUiAsync(() => StatusMessage = res.Message).ConfigureAwait(false);
-    }
+        var profileId = SelectedProfileId;
+        var capture = _liveFanCapture;
+        if (capture is null)
+            return;
 
-    private async Task RestoreDefaultFanAsync()
-    {
-        var res = await _hardware.RestoreDefaultFanCurveAsync().ConfigureAwait(false);
-        await RunOnUiAsync(() => StatusMessage = res.Message).ConfigureAwait(false);
+        await UpdateSettingsAsync(settings => settings with
+        {
+            Profiles = settings.Profiles.Select(profile => profile.Id == profileId
+                ? profile with { CapturedLegionFanTable = capture, LastModifiedUtc = DateTimeOffset.UtcNow }
+                : profile).ToArray()
+        });
+        if (SelectedProfileId == profileId && ReferenceEquals(_liveFanCapture, capture))
+        {
+            _liveFanCapture = null;
+            FanCaptureStatus = Loc.Get("FanCaptureSaved");
+            SaveFanCaptureCommand.RaiseCanExecuteChanged();
+            ApplyFanLevelsCommand.RaiseCanExecuteChanged();
+        }
     }
 
     private async Task RefreshDriversAsync()
     {
-        var list = await _drivers.ListDriversAsync().ConfigureAwait(false);
+        var list = await _drivers.ListDriversAsync(_lifetime.Token).ConfigureAwait(false);
         await RunOnUiAsync(() =>
         {
             _allDrivers = list;
@@ -888,103 +1447,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private void ApplyDriverFilter()
     {
-        FilteredDrivers.Clear();
-        foreach (var d in _allDrivers)
-        {
-            if (SelectedDriverCategory == DriverCategory.All || d.Category == SelectedDriverCategory)
-            {
-                FilteredDrivers.Add(d);
-            }
-        }
-    }
-
-    private async Task BrowseAndInspectDriverPackageAsync()
-    {
-        var dlg = new OpenFileDialog
-        {
-            Title = Loc.Get("MsgBrowseFile"),
-            Filter = "Driver Packages (*.exe;*.inf;*.cat)|*.exe;*.inf;*.cat|All Files (*.*)|*.*"
-        };
-        if (dlg.ShowDialog() != true)
-        {
-            return;
-        }
-
-        var machine = _latestCapabilityReport?.Machine ?? await _hardware.GetMachineIdentityAsync().ConfigureAwait(false);
-        var pkg = await _drivers.InspectLocalPackageAsync(dlg.FileName).ConfigureAwait(false);
-        var decision = DriverApplicabilityEvaluator.Evaluate(pkg, machine);
-
-        await RunOnUiAsync(() =>
-        {
-            _inspectedPackage = pkg;
-            _inspectedDecision = decision;
-            DriverPackagePathText = pkg.FilePath;
-            DriverPackageSha256Text = $"SHA-256: {pkg.Sha256Hex} | Signer: {pkg.SignerSubject ?? "(unsigned)"} | Ver: {pkg.FileVersion ?? "--"}";
-            DriverPackageVerdictText = $"[{decision.VerdictCode}] {decision.Reason}";
-            UserConfirmedPackageLaunch = false;
-            CanLaunchVerifiedPackage = decision.IsAllowedToLaunch;
-        }).ConfigureAwait(false);
-    }
-
-    private async Task LaunchVerifiedDriverPackageAsync()
-    {
-        if (_inspectedPackage is null || _inspectedDecision is null || !_inspectedDecision.IsAllowedToLaunch || !UserConfirmedPackageLaunch)
-        {
-            return;
-        }
-
-        var res = await _drivers.LaunchVerifiedInstallerAsync(_inspectedPackage.FilePath, _inspectedDecision.VerifiedSha256Hex).ConfigureAwait(false);
-        await RunOnUiAsync(() => StatusMessage = res.Message).ConfigureAwait(false);
-        await RefreshDriversAsync().ConfigureAwait(false);
-    }
-
-    private async Task RefreshCapabilitiesAsync(bool allowElevation)
-    {
-        var report = await _hardware.ProbeCapabilitiesAsync(allowElevation).ConfigureAwait(false);
-        await RunOnUiAsync(() =>
-        {
-            _latestCapabilityReport = report;
-            Capabilities.Clear();
-            foreach (var c in report.Capabilities)
-            {
-                Capabilities.Add(c);
-            }
-
-            UnresolvedItems.Clear();
-            foreach (var u in report.UnresolvedItems)
-            {
-                UnresolvedItems.Add(u);
-            }
-
-            if (allowElevation)
-            {
-                StatusMessage = report.IsElevated
-                    ? "Elevated capability probe succeeded."
-                    : "Capability probe finished in standard-user mode (elevation cancelled or unavailable).";
-            }
-        }).ConfigureAwait(false);
-    }
-
-    private async Task ExportCapabilityReportAsync()
-    {
-        var dlg = new SaveFileDialog
-        {
-            FileName = $"utility-capability-report-{DateTime.Now:yyyyMMdd-HHmmss}.json",
-            Filter = "JSON Files (*.json)|*.json"
-        };
-        if (dlg.ShowDialog() != true)
-        {
-            return;
-        }
-
-        var payload = new
-        {
-            CapabilityReport = _latestCapabilityReport,
-            LiveThermal = _latestThermalSnapshot,
-            ExportedAtUtc = DateTimeOffset.UtcNow
-        };
-        await File.WriteAllTextAsync(dlg.FileName, JsonSerializer.Serialize(payload, ReportJsonOptions)).ConfigureAwait(false);
-        await RunOnUiAsync(() => StatusMessage = $"Exported capability report to {dlg.FileName}").ConfigureAwait(false);
+        FilteredDrivers = SelectedDriverCategory == DriverCategory.All ? _allDrivers :
+            _allDrivers.Where(driver => driver.Category == SelectedDriverCategory).ToArray();
+        RaisePropertyChanged(nameof(FilteredDrivers));
     }
 
     private async Task DismissInterruptedAsync()
@@ -1013,9 +1478,33 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         return disp.InvokeAsync(action).Task;
     }
 
+    public async Task RunSafelyAsync(Func<Task> action)
+    {
+        try
+        {
+            await action();
+        }
+        catch (OperationCanceledException) when (_disposed)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (!_disposed)
+                await RunOnUiAsync(() => StatusMessage = Loc.Format("MsgActionFailed", ex.Message));
+        }
+    }
+
     public void Dispose()
     {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+        StopCooling();
+        Cleanup.Dispose();
+        if (_uninstall.IsValueCreated)
+            Uninstall.CancelScan();
+        _lifetime.Cancel();
         _telemetryTimer.Stop();
-        _telemetryTimer.Dispose();
     }
 }

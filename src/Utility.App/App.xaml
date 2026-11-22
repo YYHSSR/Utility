@@ -1,12 +1,21 @@
 <Application x:Class="Utility.App.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="clr-namespace:Utility.App.Controls">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Resources/Theme.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <BooleanToVisibilityConverter x:Key="BoolToVis" />
+            <ctl:EqualsToBoolConverter x:Key="EqualsToBool" />
+            <ctl:EqualsToVisibilityConverter x:Key="EqualsToVis" />
+            <ctl:EmptyToCollapsedConverter x:Key="EmptyToCollapsed" />
+            <ctl:PercentTextConverter x:Key="PercentText" />
+            <ctl:BoolToTextConverter x:Key="BoolToText" />
+            <ctl:NanToZeroConverter x:Key="NanToZero" />
+            <ctl:LocalizedEnumConverter x:Key="LocalizedEnum" />
+            <ctl:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

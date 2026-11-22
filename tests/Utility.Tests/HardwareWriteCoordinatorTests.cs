@@ -19,16 +19,14 @@ public sealed class HardwareWriteCoordinatorTests : IDisposable
         var sim = new SimulatedLenovoHardwareProvider
         {
             CurrentThermalMode = ThermalMode.Custom,
+            CurrentWindowsPowerMode = WindowsPowerMode.BestPerformance,
             CurrentPowerValues = ProfileSeedFactory.CreatePristineReference(ProfileSeedFactory.DailyId).Power
         };
-        var dailyVerified = ProfileSeedFactory.CreatePristineReference(ProfileSeedFactory.DailyId) with
-        {
-            FanCurve = new FanCurveProfile(FanCurveStatus.Verified, "Test", [])
-        };
+        var dailyWithPendingCurve = ProfileSeedFactory.CreatePristineReference(ProfileSeedFactory.DailyId);
         var store = new JsonStateStore(_tempDir);
         var coord = new HardwareWriteCoordinator(sim, store, new ProfileValidationService());
 
-        var report = await coord.ApplyPowerFieldsAsync(dailyVerified, VerifiedContracts());
+        var report = await coord.ApplyPowerFieldsAsync(dailyWithPendingCurve, VerifiedContracts());
         Assert.Equal(OperationStatus.NoOpAlreadyMatches, report.Status);
         Assert.Equal(0, sim.WriteCallsCount);
     }
@@ -75,6 +73,43 @@ public sealed class HardwareWriteCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task UnverifiedOwnerPowerSwitchRequiresAcknowledgmentBeforeAnotherSwitch()
+    {
+        var store = new JsonStateStore(_tempDir);
+        var hardware = new SimulatedLenovoHardwareProvider
+        {
+            OwnerPowerResult = OperationResult<LiveThermalSnapshot>.Fail("RESTORE_UNVERIFIED", "Failed read-back")
+        };
+        var coordinator = new HardwareWriteCoordinator(hardware, store, new ProfileValidationService());
+
+        var first = await coordinator.ApplyOwnerPowerPresetAsync(ProfileSeedFactory.GamingId);
+        var pending = Assert.IsType<OperationJournalEntry>(await coordinator.GetInterruptedOperationAsync());
+        var second = await coordinator.ApplyOwnerPowerPresetAsync(ProfileSeedFactory.DailyId);
+        Assert.Equal("RESTORE_UNVERIFIED", first.ErrorCode);
+        Assert.Equal("RECOVERY_PENDING", second.ErrorCode);
+        Assert.Equal(ProfileSeedFactory.GamingId, pending.TargetDescription);
+    }
+
+    [Fact]
+    public async Task UnverifiedCoolingRestorationBlocksProfileWritesUntilAcknowledged()
+    {
+        var store = new JsonStateStore(_tempDir);
+        var hardware = new SimulatedLenovoHardwareProvider
+        {
+            CoolingResult = OperationResult<CoolingCycleResult>.Fail("RESTORE_UNVERIFIED", "Fan state could not be read.")
+        };
+        var coordinator = new HardwareWriteCoordinator(hardware, store, new ProfileValidationService());
+
+        var cooling = await coordinator.RunCoolingCycleAsync(CancellationToken.None);
+        var pending = Assert.IsType<OperationJournalEntry>(await coordinator.GetInterruptedOperationAsync());
+        var profile = await coordinator.ApplyOwnerPowerPresetAsync(ProfileSeedFactory.DailyId);
+
+        Assert.Equal("RESTORE_UNVERIFIED", cooling.ErrorCode);
+        Assert.Equal("CoolingCycle", pending.OperationType);
+        Assert.Equal("RECOVERY_PENDING", profile.ErrorCode);
+    }
+
+    [Fact]
     public async Task DetectsAndDismissesCrashInterruptedOperationOnStartup()
     {
         var store = new JsonStateStore(_tempDir);
@@ -97,6 +132,7 @@ public sealed class HardwareWriteCoordinatorTests : IDisposable
 
         await coord.DismissInterruptedOperationAsync("op-crash-1", "Owner confirmed recovery.");
         Assert.Null(await coord.GetInterruptedOperationAsync());
+        Assert.Equal(OperationStatus.Acknowledged, Assert.Single((await store.LoadJournalAsync()).History).Status);
     }
 
     public void Dispose()

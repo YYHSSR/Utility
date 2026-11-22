@@ -98,7 +98,10 @@ public sealed record FanChannelCurve(
 public sealed record FanCurveProfile(
     FanCurveStatus Status,
     string SourceDescription,
-    IReadOnlyList<FanChannelCurve> Channels);
+    IReadOnlyList<FanChannelCurve> Channels)
+{
+    public LenovoFanCapture? LiveCapture { get; init; }
+}
 
 /// <summary>Editable performance profile preserving owner baselines and fan policy.</summary>
 public sealed record PerformanceProfile(
@@ -108,7 +111,10 @@ public sealed record PerformanceProfile(
     WindowsPowerMode WindowsPowerMode,
     FanControlMode FanMode,
     FanCurveProfile FanCurve,
-    DateTimeOffset LastModifiedUtc);
+    DateTimeOffset LastModifiedUtc)
+{
+    public LenovoFanCapture? CapturedLegionFanTable { get; init; }
+}
 
 /// <summary>Verified hardware field contract discovered or configured for a capability ID.</summary>
 public sealed record FieldHardwareContract(
@@ -174,7 +180,7 @@ public static class ProfileSeedFactory
                 FanMode: FanControlMode.CustomCurve,
                 FanCurve: new FanCurveProfile(
                     FanCurveStatus.PendingCapture,
-                    "Pending capture from Legion Zone custom profile editor",
+                    "No firmware fan table saved for this profile",
                     []),
                 LastModifiedUtc: timestamp),
 
@@ -198,7 +204,7 @@ public static class ProfileSeedFactory
                 FanMode: FanControlMode.CustomCurve,
                 FanCurve: new FanCurveProfile(
                     FanCurveStatus.PendingCapture,
-                    "Pending capture from Legion Zone custom profile editor",
+                    "No firmware fan table saved for this profile",
                     []),
                 LastModifiedUtc: timestamp),
 

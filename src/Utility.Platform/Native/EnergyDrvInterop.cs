@@ -1,11 +1,12 @@
 using System.Runtime.InteropServices;
 using Utility.Core.Models;
+using Utility.Core.Services;
 
 namespace Utility.Platform.Native;
 
 /// <summary>
 /// Interfaces with Lenovo ACPI-Compliant Virtual Power Controller (\\.\EnergyDrv)
-/// using IOCTL 0x831020F8 to read and toggle battery conservation mode.
+/// using IOCTL 0x831020F8 for battery charge policy.
 /// </summary>
 public static class EnergyDrvInterop
 {
@@ -51,6 +52,12 @@ public static class EnergyDrvInterop
 
     public static BatteryChargeMode DecodeBatteryChargeMode(uint rawState)
     {
+        // The 83JJ reports the persistent charge policy in the low byte even while plugged in.
+        if ((rawState & 0x20) != 0)
+            return BatteryChargeMode.Conservation;
+        if ((rawState & 0x04) != 0)
+            return BatteryChargeMode.RapidCharge;
+
         var isCharging = (rawState & (1u << 17)) != 0;
         var isRapidCharge = (rawState & (1u << 26)) != 0;
         var isConservation = (rawState & (1u << 29)) != 0;
@@ -68,22 +75,9 @@ public static class EnergyDrvInterop
         return BatteryChargeMode.Normal;
     }
 
-    public static uint[] BuildTransitionCommands(BatteryChargeMode current, BatteryChargeMode target) =>
-        (current, target) switch
-        {
-            (BatteryChargeMode.RapidCharge, BatteryChargeMode.Conservation) => [0x08u, 0x03u],
-            (_, BatteryChargeMode.Conservation) => [0x03u],
-            (BatteryChargeMode.Conservation, BatteryChargeMode.Normal) => [0x05u],
-            (BatteryChargeMode.RapidCharge, BatteryChargeMode.Normal) => [0x08u],
-            (_, BatteryChargeMode.Normal) => [0x05u],
-            (BatteryChargeMode.Conservation, BatteryChargeMode.RapidCharge) => [0x05u, 0x07u],
-            (_, BatteryChargeMode.RapidCharge) => [0x07u],
-            _ => []
-        };
-
     public static EnergyDrvReadResult ReadChargeMode()
     {
-        var handle = OpenDriver(requireWrite: false, out var openErr);
+        var handle = OpenDriver(out var openErr);
         if (handle == new IntPtr(-1))
         {
             return new EnergyDrvReadResult(false, BatteryChargeMode.Unknown, 0, openErr, $"Failed to open {DevicePath} (Win32={openErr}).");
@@ -91,15 +85,7 @@ public static class EnergyDrvInterop
 
         try
         {
-            var inBuf = QuerySelector;
-            if (!DeviceIoControl(handle, IoctlEnergyBatteryChargeMode, ref inBuf, 4, out var outBuf, 4, out _, IntPtr.Zero))
-            {
-                var err = Marshal.GetLastWin32Error();
-                return new EnergyDrvReadResult(false, BatteryChargeMode.Unknown, 0, err, $"EnergyDrv query IOCTL failed (Win32={err}).");
-            }
-
-            var mode = DecodeBatteryChargeMode(outBuf);
-            return new EnergyDrvReadResult(true, mode, outBuf, 0, $"EnergyDrv IOCTL 0x{IoctlEnergyBatteryChargeMode:X8} -> 0x{outBuf:X8} ({mode}).");
+            return ReadChargeMode(handle);
         }
         finally
         {
@@ -107,36 +93,79 @@ public static class EnergyDrvInterop
         }
     }
 
-    public static EnergyDrvReadResult SetConservationMode(bool enabled)
+    private static EnergyDrvReadResult ReadChargeMode(IntPtr handle)
     {
-        var current = ReadChargeMode();
-        if (!current.Success)
+        var input = QuerySelector;
+        if (!DeviceIoControl(handle, IoctlEnergyBatteryChargeMode, ref input, 4, out var output, 4, out var bytes, IntPtr.Zero))
         {
-            return current;
+            var error = Marshal.GetLastWin32Error();
+            return new(false, BatteryChargeMode.Unknown, 0, error, $"EnergyDrv query failed (Win32={error}).");
         }
 
-        var target = enabled ? BatteryChargeMode.Conservation : BatteryChargeMode.Normal;
-        if (current.Mode == target)
-        {
-            return current with { Note = $"Conservation state already matches target ({target})." };
-        }
+        if (bytes != sizeof(uint))
+            return new(false, BatteryChargeMode.Unknown, 0, 0, "EnergyDrv returned an incomplete state value.");
 
-        var commands = BuildTransitionCommands(current.Mode, target);
-        var handle = OpenDriver(requireWrite: true, out var openErr);
+        var mode = DecodeBatteryChargeMode(output);
+        return new(true, mode, output, 0, $"EnergyDrv IOCTL 0x{IoctlEnergyBatteryChargeMode:X8} -> 0x{output:X8} ({mode}).");
+    }
+
+    internal static OperationResult<BatteryChargeMode> SetConservationMode83JJ(bool enabled)
+    {
+        var handle = CreateFile(DevicePath, GenericRead | GenericWrite, FileShareReadWrite, IntPtr.Zero,
+            OpenExisting, FileAttributeNormal, IntPtr.Zero);
         if (handle == new IntPtr(-1))
-        {
-            return new EnergyDrvReadResult(false, current.Mode, current.RawValue, openErr, $"Failed to open {DevicePath} RW (Win32={openErr}).");
-        }
-
+            return OperationResult<BatteryChargeMode>.Fail("BATTERY_WRITE_UNAVAILABLE",
+                $"Could not open EnergyDrv for writing (Win32={Marshal.GetLastWin32Error()}).");
         try
         {
-            foreach (var cmd in commands)
+            var baseline = ReadChargeMode(handle);
+            if (!baseline.Success)
+                return OperationResult<BatteryChargeMode>.Fail("BATTERY_READ_FAILED", baseline.Note);
+            var target = enabled ? BatteryChargeMode.Conservation : BatteryChargeMode.Normal;
+            if (baseline.Mode == target || (!enabled && baseline.Mode == BatteryChargeMode.RapidCharge))
+                return OperationResult<BatteryChargeMode>.Ok(baseline.Mode);
+
+            void WriteMode(BatteryChargeMode mode)
             {
-                var inBuf = cmd;
-                if (!DeviceIoControl(handle, IoctlEnergyBatteryChargeMode, ref inBuf, 4, out _, 4, out _, IntPtr.Zero))
+                uint[] selectors = mode switch
                 {
-                    var err = Marshal.GetLastWin32Error();
-                    return new EnergyDrvReadResult(false, BatteryChargeMode.Unknown, 0, err, $"EnergyDrv write command 0x{cmd:X2} failed (Win32={err}).");
+                    BatteryChargeMode.Conservation => [8, 3],
+                    BatteryChargeMode.Normal => [5, 8],
+                    BatteryChargeMode.RapidCharge => [5, 7],
+                    _ => throw new InvalidOperationException("Unknown battery charge policy.")
+                };
+                foreach (var selector in selectors)
+                {
+                    var input = selector;
+                    if (!DeviceIoControl(handle, IoctlEnergyBatteryChargeMode, ref input, 4, out _, 4, out _, IntPtr.Zero))
+                        throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                }
+
+                for (var attempt = 0; attempt < 6; attempt++)
+                {
+                    var read = ReadChargeMode(handle);
+                    if (read.Success && read.Mode == mode)
+                        return;
+                    Thread.Sleep(100);
+                }
+                throw new InvalidOperationException($"Could not verify the {mode} charge policy.");
+            }
+
+            try
+            {
+                WriteMode(target);
+                return OperationResult<BatteryChargeMode>.Ok(target);
+            }
+            catch (Exception error)
+            {
+                try
+                {
+                    WriteMode(baseline.Mode);
+                    return OperationResult<BatteryChargeMode>.Fail("ROLLED_BACK", error.Message);
+                }
+                catch (Exception restore)
+                {
+                    return OperationResult<BatteryChargeMode>.Fail("RESTORE_UNVERIFIED", $"{error.Message} {restore.Message}");
                 }
             }
         }
@@ -144,15 +173,12 @@ public static class EnergyDrvInterop
         {
             CloseHandle(handle);
         }
-
-        return ReadChargeMode();
     }
 
-    private static IntPtr OpenDriver(bool requireWrite, out int lastError)
+    private static IntPtr OpenDriver(out int lastError)
     {
-        var access = requireWrite ? (GenericRead | GenericWrite) : (GenericRead | GenericWrite);
-        var h = CreateFile(DevicePath, access, FileShareReadWrite, IntPtr.Zero, OpenExisting, FileAttributeNormal, IntPtr.Zero);
-        if (h == new IntPtr(-1) && !requireWrite)
+        var h = CreateFile(DevicePath, GenericRead | GenericWrite, FileShareReadWrite, IntPtr.Zero, OpenExisting, FileAttributeNormal, IntPtr.Zero);
+        if (h == new IntPtr(-1))
         {
             h = CreateFile(DevicePath, GenericRead, FileShareReadWrite, IntPtr.Zero, OpenExisting, FileAttributeNormal, IntPtr.Zero);
         }

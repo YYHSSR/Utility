@@ -5,9 +5,11 @@ using Utility.Platform.Native;
 
 namespace Utility.Platform.Providers;
 
-/// <summary>Reads Windows battery telemetry and reads/toggles Lenovo conservation mode via EnergyDrv.</summary>
+/// <summary>Reads Windows battery telemetry and the observed Lenovo charge mode.</summary>
 public sealed class WindowsBatteryProvider : IBatteryProvider
 {
+    private readonly Lazy<bool> _canChangePolicy = new(() => new LenovoWmiProvider().IsKnown83JJFirmware());
+
     public Task<BatteryStatusSnapshot> ReadStatusAsync(CancellationToken ct = default)
     {
         return Task.Run(() =>
@@ -36,7 +38,7 @@ public sealed class WindowsBatteryProvider : IBatteryProvider
                 ChargeRateMw: native.ChargeRateMw,
                 LenovoChargeMode: energy.Success ? energy.Mode : BatteryChargeMode.Unknown,
                 IsConservationSupported: energy.Success,
-                IsConservationWriteSupported: energy.Success,
+                IsConservationWriteSupported: energy.Success && _canChangePolicy.Value,
                 RawEnergyDrvState: energy.Success ? energy.RawValue : null,
                 ProviderNote: note,
                 CapturedAtUtc: now);
@@ -67,9 +69,9 @@ public sealed class WindowsBatteryProvider : IBatteryProvider
                 return new FeatureCapability(
                     FeatureId.BatteryConservation,
                     ReadAvailable: true,
-                    WriteAvailable: true,
+                    WriteAvailable: _canChangePolicy.Value,
                     Status: CapabilityAvailability.Available,
-                    Reason: "Win32 battery telemetry and EnergyDrv conservation interface are accessible.",
+                    Reason: "Win32 battery telemetry and Lenovo charging policy are available.",
                     Provider: "Win32 IOCTL_BATTERY_QUERY_INFORMATION + EnergyDrv (0x831020F8)",
                     LastCheckedUtc: now,
                     Details: details);
@@ -91,29 +93,8 @@ public sealed class WindowsBatteryProvider : IBatteryProvider
         }, ct);
     }
 
-    public async Task<OperationResult<BatteryChargeMode>> SetConservationModeAsync(bool enabled, CancellationToken ct = default)
-    {
-        return await Task.Run(() =>
-        {
-            var res = EnergyDrvInterop.SetConservationMode(enabled);
-            if (!res.Success)
-            {
-                return OperationResult<BatteryChargeMode>.Fail("ENERGYDRV_FAILED", res.Note);
-            }
-
-            var expected = enabled ? BatteryChargeMode.Conservation : BatteryChargeMode.Normal;
-            if (res.Mode != expected)
-            {
-                // Note: if battery is actively charging below conservation cap, firmware may still report charging until threshold.
-                return new OperationResult<BatteryChargeMode>(
-                    true,
-                    res.Mode,
-                    false,
-                    "READBACK_NOTE",
-                    $"Sent conservation={(enabled ? "ON" : "OFF")} command; read-back raw=0x{res.RawValue:X8}, decoded={res.Mode}.");
-            }
-
-            return OperationResult<BatteryChargeMode>.Ok(res.Mode, $"Verified EnergyDrv conservation mode: {res.Mode} (0x{res.RawValue:X8}).");
-        }, ct).ConfigureAwait(false);
-    }
+    public Task<OperationResult<BatteryChargeMode>> SetConservationModeAsync(bool enabled, CancellationToken ct = default) =>
+        Task.Run(() => _canChangePolicy.Value
+            ? LenovoWmiProvider.Run83JJWrite(() => EnergyDrvInterop.SetConservationMode83JJ(enabled))
+            : OperationResult<BatteryChargeMode>.Fail("BATTERY_UNSUPPORTED", "Charging control requires Lenovo 83JJ / PTCN18WW."), ct);
 }

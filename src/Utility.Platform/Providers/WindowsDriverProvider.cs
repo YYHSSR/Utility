@@ -7,8 +7,7 @@ using Utility.Platform.Native;
 namespace Utility.Platform.Providers;
 
 /// <summary>
-/// Reads installed PnP signed drivers via Win32_PnPSignedDriver, inspects local official driver packages
-/// via WinVerifyTrust, and launches verified interactive installers only after byte-hash confirmation.
+/// Reads installed PnP signed drivers, inspects local files, and opens official installation routes.
 /// </summary>
 public sealed class WindowsDriverProvider : IDriverProvider
 {
@@ -16,30 +15,14 @@ public sealed class WindowsDriverProvider : IDriverProvider
     {
         return Task.Run<IReadOnlyList<InstalledDriverEntry>>(() =>
         {
-            var results = new List<InstalledDriverEntry>();
-            using var searcher = new ManagementObjectSearcher(
-                @"root\cimv2",
-                "SELECT DeviceName, DriverProviderName, DriverVersion, DriverDate, InfName, HardWareID, DeviceClass FROM Win32_PnPSignedDriver");
-
-            foreach (ManagementObject obj in searcher.Get())
+            List<InstalledDriverEntry> results;
+            try
             {
-                ct.ThrowIfCancellationRequested();
-                var deviceName = obj["DeviceName"]?.ToString()?.Trim();
-                if (string.IsNullOrWhiteSpace(deviceName))
-                {
-                    continue;
-                }
-
-                var provider = obj["DriverProviderName"]?.ToString()?.Trim() ?? string.Empty;
-                var version = obj["DriverVersion"]?.ToString()?.Trim() ?? string.Empty;
-                var rawDate = obj["DriverDate"]?.ToString()?.Trim() ?? string.Empty;
-                var formattedDate = FormatWmiDate(rawDate);
-                var infName = obj["InfName"]?.ToString()?.Trim() ?? string.Empty;
-                var hwId = obj["HardWareID"]?.ToString()?.Trim() ?? string.Empty;
-                var devClass = obj["DeviceClass"]?.ToString()?.Trim() ?? string.Empty;
-
-                var category = ClassifyDriver(deviceName, provider, devClass);
-                results.Add(new InstalledDriverEntry(deviceName, provider, version, formattedDate, infName, hwId, category));
+                results = DeviceDriverInventory.Read(ClassifyDriver, ct);
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or UnauthorizedAccessException or IOException or System.Security.SecurityException)
+            {
+                results = ReadWmiDrivers(ct);
             }
 
             return results
@@ -49,57 +32,41 @@ public sealed class WindowsDriverProvider : IDriverProvider
         }, ct);
     }
 
-    public Task<DriverPackageInspection> InspectLocalPackageAsync(string filePath, CancellationToken ct = default) =>
-        Task.Run(() => WinTrustInterop.InspectLocalFile(filePath), ct);
-
-    public async Task<OperationResult<int>> LaunchVerifiedInstallerAsync(
-        string filePath,
-        string expectedSha256Hex,
-        CancellationToken ct = default)
+    private static List<InstalledDriverEntry> ReadWmiDrivers(CancellationToken ct)
     {
-        if (!File.Exists(filePath))
-        {
-            return OperationResult<int>.Fail("FILE_NOT_FOUND", $"Driver package not found: {filePath}");
-        }
+        var results = new List<InstalledDriverEntry>();
+        using var searcher = new ManagementObjectSearcher(
+            @"root\cimv2",
+            "SELECT DeviceName, DriverProviderName, DriverVersion, DriverDate, InfName, HardWareID, DeviceClass FROM Win32_PnPSignedDriver");
 
-        // Re-verify the exact file bytes and Authenticode trust immediately before launch.
-        var fresh = await InspectLocalPackageAsync(filePath, ct).ConfigureAwait(false);
-        if (!string.Equals(fresh.Sha256Hex, expectedSha256Hex, StringComparison.OrdinalIgnoreCase))
+        using var items = searcher.Get();
+        foreach (ManagementObject item in items)
         {
-            return OperationResult<int>.Fail("HASH_CHANGED", "File contents changed after verification; launch aborted.");
-        }
-
-        if (!fresh.IsSignatureValid)
-        {
-            return OperationResult<int>.Fail("SIGNATURE_INVALID", $"Authenticode re-check failed: {fresh.SignatureStatusDetail}");
-        }
-
-        try
-        {
-            using var proc = Process.Start(new ProcessStartInfo
+            using var obj = item;
+            ct.ThrowIfCancellationRequested();
+            var deviceName = obj["DeviceName"]?.ToString()?.Trim();
+            if (string.IsNullOrWhiteSpace(deviceName))
             {
-                FileName = fresh.FilePath,
-                UseShellExecute = true,
-                WorkingDirectory = Path.GetDirectoryName(fresh.FilePath) ?? Environment.CurrentDirectory
-            });
-
-            if (proc is null)
-            {
-                return OperationResult<int>.Fail("LAUNCH_FAILED", "Windows returned a null process handle.");
+                continue;
             }
 
-            await proc.WaitForExitAsync(ct).ConfigureAwait(false);
-            return OperationResult<int>.Ok(proc.ExitCode, $"Vendor installer exited with code {proc.ExitCode}. Refreshing driver inventory.");
+            var provider = obj["DriverProviderName"]?.ToString()?.Trim() ?? string.Empty;
+            var version = obj["DriverVersion"]?.ToString()?.Trim() ?? string.Empty;
+            var rawDate = obj["DriverDate"]?.ToString()?.Trim() ?? string.Empty;
+            var formattedDate = FormatWmiDate(rawDate);
+            var infName = obj["InfName"]?.ToString()?.Trim() ?? string.Empty;
+            var hwId = obj["HardWareID"]?.ToString()?.Trim() ?? string.Empty;
+            var devClass = obj["DeviceClass"]?.ToString()?.Trim() ?? string.Empty;
+
+            var category = ClassifyDriver(deviceName, provider, devClass);
+            results.Add(new InstalledDriverEntry(deviceName, provider, version, formattedDate, infName, hwId, category));
         }
-        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
-        {
-            return OperationResult<int>.Cancelled("Installer UAC prompt was cancelled by the user.");
-        }
-        catch (Exception ex)
-        {
-            return OperationResult<int>.Fail("LAUNCH_EXCEPTION", $"Failed to launch verified installer: {ex.Message}");
-        }
+
+        return results;
     }
+
+    public Task<DriverPackageInspection> InspectLocalPackageAsync(string filePath, CancellationToken ct = default) =>
+        Task.Run(() => WinTrustInterop.InspectLocalFile(filePath), ct);
 
     public bool OpenExternalTarget(string urlOrSettingsUri)
     {

@@ -3,21 +3,10 @@ using Utility.Core.Models;
 namespace Utility.Core.Services;
 
 /// <summary>
-/// Evaluates Authenticode trust, publisher identity, architecture, OS support, and BIOS exclusion
-/// before allowing Utility to interactively launch a user-selected vendor driver installer.
+/// Describes inspection results without treating a signature as proof of model applicability.
 /// </summary>
 public static class DriverApplicabilityEvaluator
 {
-    private static readonly string[] AllowedPublishers =
-    [
-        "Lenovo",
-        "NVIDIA Corporation",
-        "Intel Corporation",
-        "Realtek Semiconductor",
-        "Advanced Micro Devices",
-        "Microsoft Corporation"
-    ];
-
     private static readonly string[] BiosKeywords =
     [
         "BIOS",
@@ -46,11 +35,11 @@ public static class DriverApplicabilityEvaluator
 
         if (ext != ".exe")
         {
-            failed.Add($"Unsupported file extension '{ext}'; only verified official .exe installers can be launched.");
+            failed.Add($"Unsupported file extension '{ext}'; this inspection expects an .exe file.");
             return new DriverPackageDecision(
                 false, true, false,
                 "UNSUPPORTED_EXTENSION",
-                "Only verified official .exe driver packages are eligible for interactive launch.",
+                "Use Windows Update or the vendor's official installation instructions.",
                 pkg.Sha256Hex, passed, failed);
         }
         passed.Add("Package extension is .exe.");
@@ -76,71 +65,13 @@ public static class DriverApplicabilityEvaluator
                 $"Digital signature verification failed ({pkg.SignatureStatusDetail}).",
                 pkg.Sha256Hex, passed, failed);
         }
-        passed.Add($"Valid Authenticode signature ({pkg.SignerSubject ?? pkg.CompanyName}).");
+        passed.Add($"Valid Authenticode signature ({pkg.SignerSubject ?? "signer unavailable"}).");
 
-        var publisherText = $"{pkg.SignerSubject} {pkg.CompanyName}";
-        if (!AllowedPublishers.Any(p => publisherText.Contains(p, StringComparison.OrdinalIgnoreCase)))
-        {
-            failed.Add($"Signer/publisher '{pkg.SignerSubject ?? pkg.CompanyName ?? "(unknown)"}' is not in the official vendor allowlist.");
-            return new DriverPackageDecision(
-                false, true, false,
-                "UNRECOGNIZED_PUBLISHER",
-                "Publisher does not match an expected official hardware vendor for this machine.",
-                pkg.Sha256Hex, passed, failed);
-        }
-        passed.Add("Publisher matches official hardware vendor allowlist.");
-
-        if (!string.Equals(pkg.PeArchitecture, "x64", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(pkg.PeArchitecture, "x86_stub_for_x64_sfx", StringComparison.OrdinalIgnoreCase))
-        {
-            failed.Add($"Incompatible PE architecture '{pkg.PeArchitecture ?? "Unknown"}'; expected x64.");
-            return new DriverPackageDecision(
-                false, true, false,
-                "ARCHITECTURE_MISMATCH",
-                $"Package architecture '{pkg.PeArchitecture ?? "Unknown"}' does not match Windows x64.",
-                pkg.Sha256Hex, passed, failed);
-        }
-        passed.Add($"Architecture check passed ({pkg.PeArchitecture}).");
-
-        if (!pkg.SupportsCurrentOs)
-        {
-            failed.Add("Package metadata indicates incompatibility with Windows 11 x64.");
-            return new DriverPackageDecision(
-                false, true, false,
-                "OS_MISMATCH",
-                "Package does not declare support for the current Windows version.",
-                pkg.Sha256Hex, passed, failed);
-        }
-        passed.Add("OS support check passed.");
-
-        // If Lenovo model metadata explicitly names another model (e.g., 82WK) without 83JJ/Legion Y7000, reject mismatch.
-        if (publisherText.Contains("Lenovo", StringComparison.OrdinalIgnoreCase) &&
-            !string.IsNullOrWhiteSpace(machine.Model))
-        {
-            var mentionsOtherModel = System.Text.RegularExpressions.Regex.IsMatch(
-                combinedText,
-                @"\b(8[0-9][A-Z0-9]{2})\b",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (mentionsOtherModel && !combinedText.Contains(machine.Model, StringComparison.OrdinalIgnoreCase))
-            {
-                failed.Add($"Package metadata targets another Lenovo machine type instead of '{machine.Model}'.");
-                return new DriverPackageDecision(
-                    false, true, false,
-                    "MODEL_MISMATCH",
-                    $"Package targets a different Lenovo machine type than {machine.Model}.",
-                    pkg.Sha256Hex, passed, failed);
-            }
-        }
-        passed.Add("Target machine compatibility check passed.");
-
+        failed.Add($"This file has no verified official package manifest for {machine.Model}, its devices and Windows version.");
         return new DriverPackageDecision(
-            IsAllowedToLaunch: true,
-            RequiresInteractiveUserConfirm: true,
-            IsBiosOrFirmwarePackage: false,
-            VerdictCode: "VERIFIED_OFFICIAL_EXE",
-            Reason: "Package passed signature, vendor, architecture, OS, and non-BIOS checks. Ready for user-confirmed interactive launch.",
-            VerifiedSha256Hex: pkg.Sha256Hex,
-            ChecksPassed: passed,
-            ChecksFailed: failed);
+            false, true, false,
+            "USE_OFFICIAL_INSTALLATION_ROUTE",
+            "Signature is valid. Install only through Windows Update or the matching vendor package and instructions.",
+            pkg.Sha256Hex, passed, failed);
     }
 }

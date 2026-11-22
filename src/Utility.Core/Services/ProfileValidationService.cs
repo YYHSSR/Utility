@@ -123,9 +123,9 @@ public sealed class ProfileValidationService
 
         foreach (var channel in fanCurve.Channels)
         {
-            if (channel.Points.Count < 2)
+            if (string.IsNullOrWhiteSpace(channel.ChannelName) || channel.Points.Count < 2)
             {
-                errors.Add($"Channel '{channel.ChannelName}' must define at least 2 points without extrapolation.");
+                errors.Add($"Channel '{channel.ChannelName}' needs a name and at least 2 points without extrapolation.");
                 continue;
             }
 
@@ -134,6 +134,11 @@ public sealed class ProfileValidationService
 
             foreach (var pt in channel.Points)
             {
+                if (!string.Equals(pt.SpeedUnit, channel.SpeedUnit, StringComparison.Ordinal))
+                {
+                    errors.Add($"Channel '{channel.ChannelName}' mixes speed units.");
+                }
+
                 if (pt.TemperatureC < channel.MinTempC || pt.TemperatureC > channel.MaxTempC)
                 {
                     errors.Add($"Channel '{channel.ChannelName}' temperature {pt.TemperatureC} C is outside [{channel.MinTempC}, {channel.MaxTempC}].");
@@ -187,7 +192,12 @@ public sealed class ProfileValidationService
         blocking.AddRange(fanValidation.Errors);
 
         var canPowerOnly = powerValidation.IsValid;
-        var canFull = powerValidation.IsValid && fanValidation.IsValid;
+        var canFull = powerValidation.IsValid && fanValidation.IsValid &&
+                      (profile.FanMode != FanControlMode.CustomCurve || profile.FanCurve.Status == FanCurveStatus.Verified);
+        if (fanValidation.IsValid && !canFull && powerValidation.IsValid)
+        {
+            blocking.Add("Custom fan curves require target firmware validation.");
+        }
 
         return new ProfileApplyPreflight(
             CanApplyFullProfile: canFull,
@@ -200,15 +210,29 @@ public sealed class ProfileValidationService
     public static bool DoesLiveMatchProfile(
         LiveThermalSnapshot live,
         PerformanceProfile profile,
+        IReadOnlyList<FieldHardwareContract> contracts) =>
+        profile.FanMode != FanControlMode.CustomCurve &&
+        DoesLiveMatchPowerFields(live, profile, contracts);
+
+    public static bool DoesLiveMatchPowerFields(
+        LiveThermalSnapshot live,
+        PerformanceProfile profile,
         IReadOnlyList<FieldHardwareContract> contracts)
     {
-        if (!live.IsVerifiedLiveRead || live.ThermalMode != ThermalMode.Custom || live.LivePowerValues is null)
+        if (!live.IsVerifiedLiveRead || live.ThermalMode != ThermalMode.Custom || live.LivePowerValues is null ||
+            (profile.WindowsPowerMode != WindowsPowerMode.Unknown && live.WindowsPowerMode != profile.WindowsPowerMode))
         {
             return false;
         }
 
         var liveMap = live.LivePowerValues.AsFieldMap();
         var profileMap = profile.Power.AsFieldMap();
+        if (contracts.Where(contract => contract.IsVerifiedOnTarget).Select(contract => contract.FieldKey)
+            .Distinct(StringComparer.Ordinal).Count() != profileMap.Count)
+        {
+            return false;
+        }
+
         foreach (var contract in contracts)
         {
             if (!profileMap.TryGetValue(contract.FieldKey, out var expected) || expected is null)
@@ -221,12 +245,12 @@ public sealed class ProfileValidationService
                 return false;
             }
 
-            if (Math.Abs(actual.Value - expected.Value) > Math.Max(0, contract.Step - 1))
+            if (actual.Value != expected.Value)
             {
                 return false;
             }
         }
 
-        return profile.FanMode != FanControlMode.CustomCurve || profile.FanCurve.Status == FanCurveStatus.Verified;
+        return true;
     }
 }

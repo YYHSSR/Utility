@@ -23,7 +23,8 @@ public enum CapabilityAvailability
     UnavailableInterface,
     InsufficientPrivilege,
     TransientFailure,
-    RebootPending
+    RebootPending,
+    PendingValidation
 }
 
 /// <summary>Per-feature capability probe result with read/write states and provenance.</summary>

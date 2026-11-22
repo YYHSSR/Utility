@@ -109,6 +109,18 @@ public sealed class ProfileSeedAndValidationTests
     }
 
     [Fact]
+    public void ValidFanDraftIsNotProofOfFirmwareCompatibility()
+    {
+        var draft = new FanCurveProfile(FanCurveStatus.Captured, "Manual draft",
+            [new FanChannelCurve(1, "Fan 1", "CPU", [new(40, 0, "%"), new(60, 50, "%")], 0, 125, 1, 0, 100, 1, "%")]);
+        var profile = ProfileSeedFactory.CreatePristineReference(ProfileSeedFactory.DailyId) with { FanCurve = draft };
+        var preflight = _validator.PreflightProfile(profile, VerifiedContracts(), isOnAcPower: true);
+
+        Assert.True(preflight.FanValidation.IsValid);
+        Assert.False(preflight.CanApplyFullProfile);
+    }
+
+    [Fact]
     public void LiveSnapshotDoesNotClaimDailyWhenGenericCustomDiffers()
     {
         var daily = ProfileSeedFactory.CreatePristineReference(ProfileSeedFactory.DailyId);

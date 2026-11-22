@@ -7,7 +7,7 @@
   <data name="AppTitle" xml:space="preserve"><value>Utility</value></data>
   <data name="AppSubtitle" xml:space="preserve"><value>Lenovo Legion Y7000 IRX9 (83JJ)</value></data>
   <data name="NavProfiles" xml:space="preserve"><value>性能配置</value></data>
-  <data name="NavBattery" xml:space="preserve"><value>电池养护</value></data>
+<data name="NavBattery" xml:space="preserve"><value>电池与显卡</value></data>
   <data name="NavTelemetry" xml:space="preserve"><value>硬件监控</value></data>
   <data name="NavGraphics" xml:space="preserve"><value>显卡模式</value></data>
   <data name="NavSoftware" xml:space="preserve"><value>软件与启动项</value></data>
@@ -20,22 +20,22 @@
   <data name="BtnDismiss" xml:space="preserve"><value>确认并清除提示</value></data>
   <data name="BtnRefresh" xml:space="preserve"><value>刷新状态</value></data>
   <data name="BtnRefreshElevated" xml:space="preserve"><value>提权读取硬件状态</value></data>
-  <data name="BtnSaveDraft" xml:space="preserve"><value>保存草稿</value></data>
-  <data name="BtnResetReference" xml:space="preserve"><value>恢复基线参考值</value></data>
+  <data name="BtnSaveDraft" xml:space="preserve"><value>保存修改</value></data>
+  <data name="BtnResetReference" xml:space="preserve"><value>恢复参考值</value></data>
   <data name="BtnApplyFullProfile" xml:space="preserve"><value>应用完整配置</value></data>
   <data name="BtnApplyPowerOnly" xml:space="preserve"><value>仅应用已验证功耗项（保留当前风扇策略）</value></data>
   <data name="LblLiveVerifiedState" xml:space="preserve"><value>已验证的实时硬件状态</value></data>
   <data name="LblSelectedProfile" xml:space="preserve"><value>当前选中的可编辑配置</value></data>
-  <data name="LblThermalMode" xml:space="preserve"><value>联想散热模式</value></data>
-  <data name="LblWindowsPowerMode" xml:space="preserve"><value>Windows 电源模式</value></data>
+  <data name="LblThermalMode" xml:space="preserve"><value>系统模式</value></data>
+  <data name="LblWindowsPowerMode" xml:space="preserve"><value>电源模式</value></data>
   <data name="LblAcState" xml:space="preserve"><value>供电状态</value></data>
   <data name="LblStockFallbacks" xml:space="preserve"><value>原厂预设模式切换</value></data>
   <data name="BtnQuiet" xml:space="preserve"><value>安静</value></data>
   <data name="BtnBalanced" xml:space="preserve"><value>均衡</value></data>
   <data name="BtnPerformance" xml:space="preserve"><value>野兽</value></data>
   <data name="ColField" xml:space="preserve"><value>参数项</value></data>
-  <data name="ColDraftValue" xml:space="preserve"><value>草稿值</value></data>
-  <data name="ColReferenceValue" xml:space="preserve"><value>基线参考</value></data>
+  <data name="ColDraftValue" xml:space="preserve"><value>设定值</value></data>
+  <data name="ColReferenceValue" xml:space="preserve"><value>参考值</value></data>
   <data name="ColLiveValue" xml:space="preserve"><value>实时回读</value></data>
   <data name="ColUnit" xml:space="preserve"><value>单位</value></data>
   <data name="ColVerified" xml:space="preserve"><value>映射验证状态</value></data>
@@ -57,9 +57,9 @@
   <data name="LblDiskCapacity" xml:space="preserve"><value>磁盘容量</value></data>
   <data name="LblGpuTelemetry" xml:space="preserve"><value>NVIDIA RTX 独立显卡</value></data>
   <data name="LblFanRpm" xml:space="preserve"><value>风扇转速 (RPM)</value></data>
-  <data name="GraphicsHeader" xml:space="preserve"><value>联想显卡切换模式</value></data>
+  <data name="GraphicsHeader" xml:space="preserve"><value>显卡模式切换</value></data>
   <data name="ChkConfirmGraphicsRecovery" xml:space="preserve"><value>我已确认本机具备可用的恢复路径（例如 BIOS 或核显显示恢复），再请求切换显卡模式</value></data>
-  <data name="BtnApplyGraphicsMode" xml:space="preserve"><value>提交显卡模式切换</value></data>
+  <data name="BtnApplyGraphicsMode" xml:space="preserve"><value>切换显卡模式</value></data>
   <data name="SoftwareHeader" xml:space="preserve"><value>软件管理、启动项与联想残留只读扫描</value></data>
   <data name="TabInstalledApps" xml:space="preserve"><value>已安装软件</value></data>
   <data name="TabStartupEntries" xml:space="preserve"><value>开机启动项</value></data>
@@ -71,8 +71,8 @@
   <data name="BtnReadFanTable" xml:space="preserve"><value>提权读取固件风扇表</value></data>
   <data name="BtnApplyFanCurve" xml:space="preserve"><value>应用风扇曲线</value></data>
   <data name="BtnRestoreFanDefault" xml:space="preserve"><value>恢复固件默认风扇策略</value></data>
-  <data name="DriversHeader" xml:space="preserve"><value>官方硬件驱动与安装包校验</value></data>
-  <data name="BtnLenovoDrivers" xml:space="preserve"><value>联想 83JJ 官方驱动页</value></data>
+  <data name="DriversHeader" xml:space="preserve"><value>官方驱动</value></data>
+  <data name="BtnLenovoDrivers" xml:space="preserve"><value>联想 83JJ 官方驱动</value></data>
   <data name="BtnNvidiaDrivers" xml:space="preserve"><value>NVIDIA 官方驱动页</value></data>
   <data name="BtnWindowsUpdate" xml:space="preserve"><value>Windows 更新</value></data>
   <data name="BtnOptionalUpdates" xml:space="preserve"><value>Windows 可选更新（驱动）</value></data>
@@ -95,10 +95,10 @@
   <data name="FieldGpuConfigurableTgpW" xml:space="preserve"><value>GPU 可配置功耗 (cTGP)</value></data>
   <data name="FieldGpuTargetTemperatureLimitC" xml:space="preserve"><value>GPU 目标温度上限</value></data>
   <data name="FieldTotalProcessorPowerTargetAcW" xml:space="preserve"><value>交流电源下整机处理器功耗目标</value></data>
-  <data name="ProfileDailyName" xml:space="preserve"><value>日常 (Daily)</value></data>
-  <data name="ProfileGamingName" xml:space="preserve"><value>游戏 (Gaming)</value></data>
-  <data name="MsgPendingFanCapture" xml:space="preserve"><value>待捕获：尚未从 Legion Zone 捕获日常/游戏自定义风扇曲线，完整配置应用已禁用。</value></data>
-  <data name="MsgAcOnline" xml:space="preserve"><value>交流电源已连接</value></data>
+  <data name="ProfileDailyName" xml:space="preserve"><value>日常</value></data>
+  <data name="ProfileGamingName" xml:space="preserve"><value>游戏</value></data>
+  <data name="MsgPendingFanCapture" xml:space="preserve"><value>通道编辑区还没有曲线草稿。</value></data>
+  <data name="MsgAcOnline" xml:space="preserve"><value>电源已连接</value></data>
   <data name="MsgOnBattery" xml:space="preserve"><value>电池供电中</value></data>
   <data name="MsgVerifiedOnTarget" xml:space="preserve"><value>已验证映射</value></data>
   <data name="MsgPendingProbe" xml:space="preserve"><value>待提权验证 WMI 边界</value></data>
@@ -110,4 +110,314 @@
   <data name="MsgPausedOnBattery" xml:space="preserve"><value>电池下已暂停轮询</value></data>
   <data name="MsgRebootRequiredBanner" xml:space="preserve"><value>已提交显卡模式切换请求，请由用户自行重启 Windows 后复核生效模式。</value></data>
   <data name="MsgRecoveredLastGood" xml:space="preserve"><value>主配置文件损坏，已自动从最近一次完好备份恢复。</value></data>
+  <data name="MsgProfileWritePending" xml:space="preserve"><value>本机固件写入尚待验证。可查看并保存两套配置草稿。</value></data>
+  <data name="MsgFanDraftSaved" xml:space="preserve"><value>风扇曲线草稿已保存，未修改固件。</value></data>
+  <data name="MsgFanDraftGeometryValid" xml:space="preserve"><value>曲线顺序和输入值有效，固件限制尚未验证。</value></data>
+  <data name="FanChannelName" xml:space="preserve"><value>风扇 {0}</value></data>
+  <data name="FanChannelLabel" xml:space="preserve"><value>通道</value></data>
+  <data name="FanSensorLabel" xml:space="preserve"><value>传感器</value></data>
+  <data name="FirmwareFanTableLabel" xml:space="preserve"><value>固件风扇表原始值（只读）</value></data>
+  <data name="BtnAddFanChannel" xml:space="preserve"><value>添加通道</value></data>
+  <data name="BtnSaveFanDraft" xml:space="preserve"><value>保存曲线草稿</value></data>
+  <data name="MsgActionFailed" xml:space="preserve"><value>操作失败（{0}）。</value></data>
+  <data name="MsgProfileDraftSaved" xml:space="preserve"><value>已保存 {0} 的功耗草稿。</value></data>
+  <data name="MsgPowerDraftReset" xml:space="preserve"><value>已恢复 {0} 的功耗草稿，保留风扇曲线草稿。</value></data>
+  <data name="MsgInvalidPowerValue" xml:space="preserve"><value>请输入整数或留空（{0}）。</value></data>
+  <data name="AppTagline" xml:space="preserve"><value>Legion 控制中心</value></data>
+  <data name="NavHome" xml:space="preserve"><value>系统概述</value></data>
+  <data name="NavGroupControl" xml:space="preserve"><value>性能与硬件</value></data>
+  <data name="NavGroupSystem" xml:space="preserve"><value>系统工具</value></data>
+  <data name="LblThisDevice" xml:space="preserve"><value>本机设备</value></data>
+  <data name="TipMinimize" xml:space="preserve"><value>最小化</value></data>
+  <data name="TipMaximize" xml:space="preserve"><value>最大化</value></data>
+  <data name="TipRestore" xml:space="preserve"><value>还原</value></data>
+  <data name="TipClose" xml:space="preserve"><value>关闭到托盘</value></data>
+  <data name="LblLastUpdated" xml:space="preserve"><value>最近采样</value></data>
+  <data name="MsgRefreshedAt" xml:space="preserve"><value>已于 {0} 刷新全部状态。</value></data>
+  <data name="HomeTitle" xml:space="preserve"><value>系统概述</value></data>
+  <data name="HomeSubtitle" xml:space="preserve"><value>实时查看性能、电池与温度状态，快速进入常用功能。</value></data>
+  <data name="BtnRefreshAll" xml:space="preserve"><value>一键刷新</value></data>
+  <data name="LblCpu" xml:space="preserve"><value>处理器</value></data>
+  <data name="LblGpu" xml:space="preserve"><value>显卡</value></data>
+  <data name="LblMemory" xml:space="preserve"><value>内存</value></data>
+  <data name="LblBattery" xml:space="preserve"><value>电池</value></data>
+  <data name="LblDisk" xml:space="preserve"><value>磁盘活动</value></data>
+  <data name="LblActiveProfile" xml:space="preserve"><value>当前档位</value></data>
+  <data name="LblQuickActions" xml:space="preserve"><value>常用功能</value></data>
+  <data name="LblLiveTrend" xml:space="preserve"><value>近 2 分钟负载</value></data>
+  <data name="LblUsage" xml:space="preserve"><value>占用率</value></data>
+  <data name="QuickProfilesDesc" xml:space="preserve"><value>日常 / 游戏功耗档位</value></data>
+  <data name="QuickFanDesc" xml:space="preserve"><value>自定义多通道曲线</value></data>
+  <data name="QuickBatteryDesc" xml:space="preserve"><value>健康度与养护模式</value></data>
+  <data name="QuickDriversDesc" xml:space="preserve"><value>驱动清单与官方更新</value></data>
+  <data name="QuickSoftwareDesc" xml:space="preserve"><value>应用、启动项与残留</value></data>
+  <data name="QuickCapabilitiesDesc" xml:space="preserve"><value>本机能力诊断报告</value></data>
+  <data name="SubProfiles" xml:space="preserve"><value>查看当前模式，编辑并保存日常与游戏两套功耗草稿。</value></data>
+  <data name="SubBattery" xml:space="preserve"><value>电池健康、容量与联想充电模式。</value></data>
+  <data name="SubTelemetry" xml:space="preserve"><value>处理器、内存、显卡与磁盘的实时数据，每 2 秒刷新。</value></data>
+  <data name="SubGraphics" xml:space="preserve"><value>显卡工作模式诊断。</value></data>
+  <data name="SubSoftware" xml:space="preserve"><value>已安装应用、开机启动项与联想残留扫描（只读）。</value></data>
+  <data name="SubFan" xml:space="preserve"><value>为每个档位编辑多通道风扇曲线草稿。</value></data>
+  <data name="SubDrivers" xml:space="preserve"><value>本机驱动清单、官方下载渠道与本地安装包校验。</value></data>
+  <data name="SubCapabilities" xml:space="preserve"><value>每项功能在本机上的读写能力与待解决事项。</value></data>
+  <data name="LblLiveState" xml:space="preserve"><value>实时状态</value></data>
+  <data name="LblPowerParameters" xml:space="preserve"><value>功耗参数</value></data>
+  <data name="LblProfileSelector" xml:space="preserve"><value>编辑档位</value></data>
+  <data name="LblReferenceShort" xml:space="preserve"><value>参考</value></data>
+  <data name="LblLiveShort" xml:space="preserve"><value>实测</value></data>
+  <data name="LblBatteryDetails" xml:space="preserve"><value>电池信息</value></data>
+  <data name="LblPowerSource" xml:space="preserve"><value>供电状态</value></data>
+  <data name="LblChargeLevel" xml:space="preserve"><value>当前电量</value></data>
+  <data name="LblGpuUtil" xml:space="preserve"><value>占用率</value></data>
+  <data name="LblTemperature" xml:space="preserve"><value>温度</value></data>
+  <data name="LblPower" xml:space="preserve"><value>功耗</value></data>
+  <data name="LblVram" xml:space="preserve"><value>显存</value></data>
+  <data name="LblPState" xml:space="preserve"><value>性能状态</value></data>
+  <data name="LblEffectiveMode" xml:space="preserve"><value>当前生效模式</value></data>
+  <data name="LblPendingMode" xml:space="preserve"><value>待生效模式</value></data>
+  <data name="LblCurvePreview" xml:space="preserve"><value>曲线预览</value></data>
+  <data name="LblCurvePoints" xml:space="preserve"><value>曲线点</value></data>
+  <data name="LblChannelSettings" xml:space="preserve"><value>通道设置</value></data>
+  <data name="LblSpeedUnit" xml:space="preserve"><value>单位</value></data>
+  <data name="BtnPreviewCurve" xml:space="preserve"><value>校验并预览</value></data>
+  <data name="LblOfficialSources" xml:space="preserve"><value>官方驱动渠道</value></data>
+  <data name="LblPackageInspector" xml:space="preserve"><value>本地安装包校验</value></data>
+  <data name="MsgNoPackageSelected" xml:space="preserve"><value>尚未选择安装包。校验只读取签名和哈希，不会运行文件。</value></data>
+  <data name="LblUnresolvedItems" xml:space="preserve"><value>待解决事项</value></data>
+  <data name="ColName" xml:space="preserve"><value>名称</value></data>
+  <data name="ColPublisher" xml:space="preserve"><value>发布者</value></data>
+  <data name="ColVersion" xml:space="preserve"><value>版本</value></data>
+  <data name="ColScope" xml:space="preserve"><value>范围</value></data>
+  <data name="ColSource" xml:space="preserve"><value>来源</value></data>
+  <data name="ColEnabled" xml:space="preserve"><value>开机自启</value></data>
+  <data name="ColTarget" xml:space="preserve"><value>目标</value></data>
+  <data name="ColClassification" xml:space="preserve"><value>分类</value></data>
+  <data name="ColKind" xml:space="preserve"><value>类型</value></data>
+  <data name="ColState" xml:space="preserve"><value>状态</value></data>
+  <data name="ColMainAppPresent" xml:space="preserve"><value>主程序存在</value></data>
+  <data name="ColEvidence" xml:space="preserve"><value>依据</value></data>
+  <data name="ColCategory" xml:space="preserve"><value>类别</value></data>
+  <data name="ColDevice" xml:space="preserve"><value>设备</value></data>
+  <data name="ColProvider" xml:space="preserve"><value>提供方</value></data>
+  <data name="ColDate" xml:space="preserve"><value>日期</value></data>
+  <data name="ColInf" xml:space="preserve"><value>INF</value></data>
+  <data name="ColFeature" xml:space="preserve"><value>功能</value></data>
+  <data name="ColRead" xml:space="preserve"><value>可读</value></data>
+  <data name="ColWrite" xml:space="preserve"><value>可写</value></data>
+  <data name="ColStatus" xml:space="preserve"><value>状态</value></data>
+  <data name="ColReason" xml:space="preserve"><value>说明</value></data>
+  <data name="ColDrive" xml:space="preserve"><value>盘符</value></data>
+  <data name="ColLabel" xml:space="preserve"><value>卷标</value></data>
+  <data name="ColUsedGb" xml:space="preserve"><value>已用 (GB)</value></data>
+  <data name="ColTotalGb" xml:space="preserve"><value>总量 (GB)</value></data>
+  <data name="ColUsedPercent" xml:space="preserve"><value>使用率</value></data>
+  <data name="ColTempC" xml:space="preserve"><value>温度 (°C)</value></data>
+  <data name="ColSpeed" xml:space="preserve"><value>转速</value></data>
+  <data name="FanCaptureTitle" xml:space="preserve"><value>固件风扇档位</value></data>
+  <data name="FanCaptureReference" xml:space="preserve"><value>日常档参考 · 已与 83JJ 实机功耗和风扇档位核对</value></data>
+  <data name="FanCaptureLive" xml:space="preserve"><value>实机读回。请确认当前硬件档位后再保存。</value></data>
+  <data name="FanCaptureSaved" xml:space="preserve"><value>已显示选中配置的固件快照。</value></data>
+  <data name="FanCaptureReadHint" xml:space="preserve"><value>读取当前固件中的自定义风扇表，或查看已保存的快照。</value></data>
+  <data name="BtnSaveFanCapture" xml:space="preserve"><value>保存实机快照到所选配置</value></data>
+  <data name="FanStageNumber" xml:space="preserve"><value>档位</value></data>
+  <data name="FanStageLevel" xml:space="preserve"><value>转速级别</value></data>
+  <data name="FanStageCpu" xml:space="preserve"><value>CPU（°C）</value></data>
+  <data name="FanStageGpu" xml:space="preserve"><value>GPU（°C）</value></data>
+  <data name="FanStageAux" xml:space="preserve"><value>CPU 传感器（°C）</value></data>
+  <data name="FanStageCpuRpm" xml:space="preserve"><value>CPU 风扇（RPM）</value></data>
+  <data name="FanStageGpuRpm" xml:space="preserve"><value>GPU 风扇（RPM）</value></data>
+  <data name="MsgOriginalPowerScope" xml:space="preserve"><value>应用原始日常或游戏功耗。请接通电源并保持联想自定义模式。现用风扇表会保留。</value></data>
+  <data name="BtnApplyProfilePower" xml:space="preserve"><value>应用</value></data>
+  <data name="LblLiveProfileSwitch" xml:space="preserve"><value>切换档位</value></data>
+  <data name="TrayOpen" xml:space="preserve"><value>打开 Utility</value></data>
+  <data name="TrayExit" xml:space="preserve"><value>退出 Utility</value></data>
+  <data name="BtnQuickCleanup" xml:space="preserve"><value>一键清理</value></data>
+  <data name="TipQuickCleanup" xml:space="preserve"><value>回收后台内存、删除两天前的临时缓存，并扫描重复文件和大文件。</value></data>
+  <data name="CleanupQuickScanning" xml:space="preserve"><value>正在回收内存、清理临时缓存并扫描磁盘…</value></data>
+  <data name="CleanupQuickProgress" xml:space="preserve"><value>正在扫描重复文件和大文件，已检查 {0:N0} 个文件…</value></data>
+  <data name="CleanupQuickMemory" xml:space="preserve"><value>内存回收</value></data>
+  <data name="CleanupQuickPersonal" xml:space="preserve"><value>重复文件和大文件扫描</value></data>
+  <data name="CleanupQuickTempResult" xml:space="preserve"><value>已清理 {0:N0} 个临时缓存文件（{1}），{2:N0} 个跳过或失败。</value></data>
+  <data name="CleanupQuickPersonalResult" xml:space="preserve"><value>找到 {0:N0} 组重复文件、{1:N0} 个大文件，可切换分类查看。</value></data>
+  <data name="CleanupQuickStepFailed" xml:space="preserve"><value>{0}未完成。{1}</value></data>
+  <data name="BtnCooling" xml:space="preserve"><value>降温除尘</value></data>
+  <data name="BtnStopCooling" xml:space="preserve"><value>停止降温</value></data>
+  <data name="TipCooling" xml:space="preserve"><value>插电时让风扇全速运转。随温度提前结束，最多 30 秒，之后恢复原有风扇控制。</value></data>
+  <data name="MsgCoolingInProgress" xml:space="preserve"><value>正在执行降温，风扇全速最长运行 30 秒。</value></data>
+  <data name="MsgCoolingComplete" xml:space="preserve"><value>已恢复风扇控制。{0} CPU {1} → {2} · GPU {3} → {4}</value></data>
+  <data name="CoolingStopTemperatureReached" xml:space="preserve"><value>已达到温度目标。</value></data>
+  <data name="CoolingStopTimeLimit" xml:space="preserve"><value>已达到运行时限。</value></data>
+  <data name="CoolingStopStopped" xml:space="preserve"><value>已手动停止。</value></data>
+  <data name="CoolingStopAcDisconnected" xml:space="preserve"><value>电源已拔出。</value></data>
+  <data name="CoolingStopSensorUnavailable" xml:space="preserve"><value>温度读数已中断。</value></data>
+  <data name="MsgCoolingAcRequired" xml:space="preserve"><value>请接上电源后再启动降温。</value></data>
+  <data name="MsgCoolingUnavailable" xml:space="preserve"><value>无法读取风扇控制状态或有效温度，降温未启动。</value></data>
+  <data name="MsgCoolingAlreadyActive" xml:space="preserve"><value>风扇已经处于全速模式。</value></data>
+  <data name="MsgMemoryNothingToReclaim" xml:space="preserve"><value>没有找到可回收内存的闲置后台应用。</value></data>
+  <data name="MsgMemoryReclaimed" xml:space="preserve"><value>已回收 {0} 个后台进程的内存。系统可用内存 {1:F2} → {2:F2} GiB。</value></data>
+  <data name="MsgMemoryReclaimedCount" xml:space="preserve"><value>已回收 {0} 个后台进程的内存。</value></data>
+  <data name="MsgQuickCancelled" xml:space="preserve"><value>操作已取消。</value></data>
+  <data name="MsgProfileApplied" xml:space="preserve"><value>已应用并核验「{0}」的功耗参数和 Windows 电源模式。</value></data>
+  <data name="NavCleanup" xml:space="preserve"><value>垃圾清理</value></data>
+  <data name="CleanupSelectColumn" xml:space="preserve"><value>勾选</value></data>
+  <data name="CleanupPathColumn" xml:space="preserve"><value>文件或注册表位置</value></data>
+  <data name="CleanupSizeColumn" xml:space="preserve"><value>大小</value></data>
+  <data name="CleanupEvidenceColumn" xml:space="preserve"><value>依据 / 时间</value></data>
+  <data name="CleanupCancel" xml:space="preserve"><value>取消扫描</value></data>
+  <data name="CleanupTemporary" xml:space="preserve"><value>C 盘清理</value></data>
+  <data name="CleanupDuplicates" xml:space="preserve"><value>重复文件</value></data>
+  <data name="CleanupLarge" xml:space="preserve"><value>大文件</value></data>
+  <data name="CleanupSoftware" xml:space="preserve"><value>软件卸载</value></data>
+  <data name="CleanupChooseFolder" xml:space="preserve"><value>选择文件夹</value></data>
+  <data name="CleanupFolderLabel" xml:space="preserve"><value>扫描目录</value></data>
+  <data name="CleanupScan" xml:space="preserve"><value>开始扫描</value></data>
+  <data name="CleanupDeleteSelected" xml:space="preserve"><value>清理所选</value></data>
+  <data name="CleanupMinSize" xml:space="preserve"><value>最小大小（MiB）</value></data>
+  <data name="CleanupSearchApps" xml:space="preserve"><value>搜索名称或发布者</value></data>
+  <data name="CleanupRefreshApps" xml:space="preserve"><value>刷新列表</value></data>
+  <data name="CleanupUninstallSelected" xml:space="preserve"><value>卸载所选软件</value></data>
+  <data name="CleanupScanLeftovers" xml:space="preserve"><value>检测卸载残留</value></data>
+  <data name="CleanupAppType" xml:space="preserve"><value>类型</value></data>
+  <data name="CleanupBackToApps" xml:space="preserve"><value>返回软件列表</value></data>
+  <data name="CleanupTemporaryHint" xml:space="preserve"><value>扫描 C 盘系统临时文件、用户临时文件和 DirectX 缓存。扫描范围为两天前修改的文件。</value></data>
+  <data name="CleanupLargeHint" xml:space="preserve"><value>按大小查找所选目录中的文件，默认扫描 C 盘。</value></data>
+  <data name="CleanupDuplicateHint" xml:space="preserve"><value>按 SHA-256 检测所选目录中的重复文件。每组至少保留一份。</value></data>
+  <data name="CleanupSoftwareHint" xml:space="preserve"><value>支持 Win32 与当前用户可卸载的 Microsoft Store 应用。卸载后可核对残留。</value></data>
+  <data name="CleanupCancelled" xml:space="preserve"><value>操作已取消。</value></data>
+  <data name="CleanupInvalidSize" xml:space="preserve"><value>请输入 1 到 1048576 MiB 之间的整数。</value></data>
+  <data name="CleanupScanning" xml:space="preserve"><value>正在扫描文件…</value></data>
+  <data name="CleanupScanProgress" xml:space="preserve"><value>已检查 {0:N0} 个文件…</value></data>
+  <data name="CleanupScanDone" xml:space="preserve"><value>找到 {0:N0} 项，候选数据 {1}，已检查 {2:N0} 个文件。</value></data>
+  <data name="CleanupDriveFree" xml:space="preserve"><value>C 盘可用空间 {0}。</value></data>
+  <data name="CleanupResultLimit" xml:space="preserve"><value>已达到结果上限。缩小目录范围可查看更多结果。</value></data>
+  <data name="CleanupNothingSelected" xml:space="preserve"><value>请勾选要清理的项目。</value></data>
+  <data name="CleanupConfirmTemp" xml:space="preserve"><value>永久删除所选的 {0:N0} 个临时文件？</value></data>
+  <data name="CleanupConfirmFiles" xml:space="preserve"><value>将所选的 {0:N0} 个文件移入回收站？每组重复文件须保留一份。</value></data>
+  <data name="CleanupRemoving" xml:space="preserve"><value>正在清理所选项目…</value></data>
+  <data name="CleanupLoadingApps" xml:space="preserve"><value>正在读取已安装软件…</value></data>
+  <data name="CleanupAppsFound" xml:space="preserve"><value>找到 {0:N0} 项软件，其中 {1:N0} 项支持直接卸载。</value></data>
+  <data name="CleanupStoreError" xml:space="preserve"><value>已读取桌面软件。读取商店应用失败。{0}</value></data>
+  <data name="CleanupConfirmUninstall" xml:space="preserve"><value>卸载「{0}」？Windows 或软件官方卸载程序可能弹出提示。</value></data>
+  <data name="CleanupWaitingUninstall" xml:space="preserve"><value>正在等待「{0}」卸载完成…</value></data>
+  <data name="CleanupRestartRequired" xml:space="preserve"><value>卸载程序要求重启。</value></data>
+  <data name="CleanupUninstallPending" xml:space="preserve"><value>Windows 尚未确认卸载。请完成卸载，再检测残留。{0}</value></data>
+  <data name="CleanupFindingResiduals" xml:space="preserve"><value>正在检测「{0}」的文件和注册表残留…</value></data>
+  <data name="CleanupResidualsFound" xml:space="preserve"><value>为「{0}」找到 {1:N0} 项可能残留。请核对路径并勾选。</value></data>
+  <data name="CleanupConfirmResidual" xml:space="preserve"><value>清理「{0}」的所选 {1:N0} 项残留？文件移入回收站，注册表先备份再删除。</value></data>
+  <data name="CleanupBatchDone" xml:space="preserve"><value>已处理 {0:N0} 项，跳过或失败 {1:N0} 项。</value></data>
+  <data name="CleanupBackupLocation" xml:space="preserve"><value>注册表备份位于 {0}。</value></data>
+  <data name="CleanupDuplicateGroup" xml:space="preserve"><value>第 {0} 组</value></data>
+  <data name="CleanupEvidenceExactProductRegistry" xml:space="preserve"><value>产品专用注册表名称</value></data>
+  <data name="CleanupEvidenceInstallReferenceRegistry" xml:space="preserve"><value>注册项指向原安装目录</value></data>
+  <data name="CleanupEvidencePackageData" xml:space="preserve"><value>应用包专用数据目录</value></data>
+  <data name="CleanupEvidenceRegisteredInstallationFolder" xml:space="preserve"><value>已登记的原安装目录</value></data>
+  <data name="CleanupEvidenceExactProductFolder" xml:space="preserve"><value>与产品名称一致</value></data>
+  <data name="CleanupRemovable" xml:space="preserve"><value>可卸载</value></data>
+  <data name="CleanupUnavailable" xml:space="preserve"><value>不可直接卸载</value></data>
+  <data name="CleanupSelectItems" xml:space="preserve"><value>批量勾选</value></data>
+  <data name="CleanupConfirmStoreUninstall" xml:space="preserve"><value>从当前用户卸载 Microsoft Store？这会影响通过商店安装和更新应用，能否卸载由 Windows 决定。</value></data>
+  <data name="LblLiveMonitor" xml:space="preserve"><value>实时监控</value></data>
+  <data name="LblCpuFan" xml:space="preserve"><value>CPU 风扇</value></data>
+  <data name="LblGpuFan" xml:space="preserve"><value>GPU 风扇</value></data>
+  <data name="LblStorage" xml:space="preserve"><value>存储</value></data>
+  <data name="LblGraphicsCard" xml:space="preserve"><value>独立显卡</value></data>
+  <data name="LblNeedsAdmin" xml:space="preserve"><value>需管理员</value></data>
+  <data name="LblUsed" xml:space="preserve"><value>已用</value></data>
+  <data name="LblFan" xml:space="preserve"><value>风扇</value></data>
+  <data name="BtnEnableFirmwareSensors" xml:space="preserve"><value>启用 CPU 监控</value></data>
+  <data name="TipEnableFirmwareSensors" xml:space="preserve"><value>本次运行授权一次，持续读取 CPU 温度与风扇转速。</value></data>
+  <data name="MsgSensorsAuthorized" xml:space="preserve"><value>已启用 CPU 温度和风扇转速监控。</value></data>
+  <data name="MsgSensorsDenied" xml:space="preserve"><value>已取消管理员授权，点击授权按钮可重试。</value></data>
+  <data name="MsgSensorsFailed" xml:space="preserve"><value>固件监控读取失败。{0}</value></data>
+  <data name="GraphicsModeHybrid" xml:space="preserve"><value>混合模式</value></data>
+  <data name="GraphicsModeDgpuOnly" xml:space="preserve"><value>独显直连</value></data>
+  <data name="GraphicsModeHybridIgpuOnly" xml:space="preserve"><value>混合 · 仅核显</value></data>
+  <data name="GraphicsModeHybridAuto" xml:space="preserve"><value>混合自动</value></data>
+  <data name="MsgGraphicsAuthorize" xml:space="preserve"><value>需要管理员权限才能读取显卡模式。</value></data>
+  <data name="MsgGraphicsUnsupported" xml:space="preserve"><value>当前机型或 BIOS 未开放此切换功能。</value></data>
+  <data name="MsgGraphicsConfirm" xml:space="preserve"><value>确认切换到「{0}」？请先保存工作并关闭游戏等占用显卡的程序。显示输出切换可能需要重启。</value></data>
+  <data name="MsgGraphicsModeHelp" xml:space="preserve"><value>进入或退出独显直连需要重启。独显仍被占用时，仅核显会显示为待生效。</value></data>
+  <data name="MsgGraphicsApplied" xml:space="preserve"><value>显卡模式已生效。「{0}」</value></data>
+  <data name="MsgGraphicsQueued" xml:space="preserve"><value>已提交切换到「{0}」的请求。重启后请核对生效模式。</value></data>
+  <data name="MsgGraphicsWaitingForWindows" xml:space="preserve"><value>已提交切换到「{0}」的请求。Windows 更新显卡状态后可刷新核对。</value></data>
+  <data name="BtnConservationOn" xml:space="preserve"><value>开启养护</value></data>
+  <data name="BtnConservationOff" xml:space="preserve"><value>关闭养护</value></data>
+  <data name="MsgGraphicsBootMismatch" xml:space="preserve"><value>重启后的生效模式与提交的「{0}」不一致。</value></data>
+  <data name="MsgSensorsEnabled" xml:space="preserve"><value>CPU 监控已启用</value></data>
+  <data name="MsgPausedInIntegratedMode" xml:space="preserve"><value>仅核显模式已暂停</value></data>
+  <data name="MsgPowerLastRead" xml:space="preserve"><value>上次读取于 {0}。{1}</value></data>
+  <data name="MsgPowerLiveRead" xml:space="preserve"><value>已于 {0} 读取固件参数。</value></data>
+  <data name="MsgPowerCustomOnly" xml:space="preserve"><value>应用日常或游戏档位后可读取自定义功耗参数。</value></data>
+  <data name="MsgBatteryConservationHelp" xml:space="preserve"><value>养护启用时，充电上限由本机固件设定。</value></data>
+  <data name="MsgFanLevelHelp" xml:space="preserve"><value>先读取实机风扇表。应用转速档位需处于 Utility 性能档位并接通电源，温度阈值由固件控制。</value></data>
+  <data name="LblFanLevelInput" xml:space="preserve"><value>十段转速档位，用逗号分隔</value></data>
+  <data name="BtnApplyFanLevels" xml:space="preserve"><value>应用转速档位</value></data>
+  <data name="BtnRestoreFanReference" xml:space="preserve"><value>恢复日常参考曲线</value></data>
+  <data name="MsgFanInvalidLevels" xml:space="preserve"><value>请输入十个 1 到 10 的档位，后一个档位不得低于前一个。</value></data>
+  <data name="MsgFanRestoreReference" xml:space="preserve"><value>恢复你日常参考曲线的十段风扇转速档位？</value></data>
+  <data name="MsgFanReadAgain" xml:space="preserve"><value>请重新读取实机风扇表，核对当前档位。</value></data>
+  <data name="MsgFanLevelsApplied" xml:space="preserve"><value>风扇转速档位已应用并读回核对。</value></data>
+  <data name="GraphicsOptionDgpu" xml:space="preserve"><value>独显</value></data>
+  <data name="GraphicsOptionHybrid" xml:space="preserve"><value>核显</value></data>
+  <data name="MsgGraphicsAlreadyActive" xml:space="preserve"><value>当前已是「{0}」。</value></data>
+  <data name="MsgConservationDisabled" xml:space="preserve"><value>养护模式已关闭</value></data>
+  <data name="MsgBatteryCritical" xml:space="preserve"><value>电量严重不足</value></data>
+  <data name="MsgBatteryCharging" xml:space="preserve"><value>正在充电</value></data>
+  <data name="DriverCategoryAll" xml:space="preserve"><value>全部</value></data>
+  <data name="DriverCategoryGraphics" xml:space="preserve"><value>显卡</value></data>
+  <data name="DriverCategoryWirelessNetwork" xml:space="preserve"><value>网络</value></data>
+  <data name="DriverCategoryAudio" xml:space="preserve"><value>音频</value></data>
+  <data name="DriverCategoryChipset" xml:space="preserve"><value>芯片组</value></data>
+  <data name="DriverCategoryLenovoControl" xml:space="preserve"><value>联想</value></data>
+  <data name="DriverCategoryOther" xml:space="preserve"><value>其他</value></data>
+  <data name="QcLargeSummary" xml:space="preserve"><value>找到 {0} 个大文件，共 {1}。</value></data>
+  <data name="QcLargeNone" xml:space="preserve"><value>没有大于 {0} 的文件。</value></data>
+  <data name="QcDriveUsage" xml:space="preserve"><value>已用 {0} / {1}</value></data>
+  <data name="QcLocalDisk" xml:space="preserve"><value>本地磁盘</value></data>
+  <data name="QcSelectAll" xml:space="preserve"><value>全选</value></data>
+  <data name="QcScanDrive" xml:space="preserve"><value>扫描</value></data>
+  <data name="QcLargeThreshold" xml:space="preserve"><value>打开对应磁盘的开关后，扫描其中大于 {0} 的文件。</value></data>
+  <data name="QcDuplicateSummary" xml:space="preserve"><value>找到 {0} 组重复文件，可释放 {1}。</value></data>
+  <data name="QcDuplicateNone" xml:space="preserve"><value>没有发现重复文件。</value></data>
+  <data name="QcDeleteSelected" xml:space="preserve"><value>删除所选</value></data>
+  <data name="QcSelectCopies" xml:space="preserve"><value>勾选多余副本</value></data>
+  <data name="QcScanDuplicates" xml:space="preserve"><value>重新扫描</value></data>
+  <data name="QcScanning" xml:space="preserve"><value>正在扫描…已检查 {0} 个文件</value></data>
+  <data name="ColDescription" xml:space="preserve"><value>描述</value></data>
+  <data name="ColCreated" xml:space="preserve"><value>创建时间</value></data>
+  <data name="QcRestoreCancelled" xml:space="preserve"><value>已取消管理员授权。</value></data>
+  <data name="QcRestoreFailed" xml:space="preserve"><value>操作未完成：{0}</value></data>
+  <data name="QcRestoreDeleted" xml:space="preserve"><value>已删除 {0} 个还原点。</value></data>
+  <data name="QcRestoreConfirm" xml:space="preserve"><value>确定删除所选的 {0} 个系统还原点？删除后将无法再用它们还原系统，此操作不可撤销。</value></data>
+  <data name="QcRestoreSummaryNoSize" xml:space="preserve"><value>共 {0} 个还原点。</value></data>
+  <data name="QcRestoreSummary" xml:space="preserve"><value>共 {0} 个还原点，占用 {1}。</value></data>
+  <data name="QcRestoreNone" xml:space="preserve"><value>没有系统还原点。</value></data>
+  <data name="QcRestoreLoading" xml:space="preserve"><value>正在读取还原点…</value></data>
+  <data name="QcRestoreHint" xml:space="preserve"><value>读取和删除还原点需要管理员权限。</value></data>
+  <data name="QcRestoreDelete" xml:space="preserve"><value>删除所选还原点</value></data>
+  <data name="QcRestoreLoad" xml:space="preserve"><value>读取还原点</value></data>
+  <data name="QcRestoreCard" xml:space="preserve"><value>系统还原点</value></data>
+  <data name="QcStatusInUse" xml:space="preserve"><value>正在使用</value></data>
+  <data name="QcStatusRemoved" xml:space="preserve"><value>已清理</value></data>
+  <data name="QcTempSummary" xml:space="preserve"><value>已清理 {0} 个文件，释放 {1}；{2} 个文件正在使用，未清理。</value></data>
+  <data name="QcTempNone" xml:space="preserve"><value>没有需要清理的临时文件。</value></data>
+  <data name="QcStartHint" xml:space="preserve"><value>点击右上角「一键清理」，自动清理内存与缓存。</value></data>
+  <data name="QcTempCard" xml:space="preserve"><value>临时文件与缓存</value></data>
+  <data name="QcTabSystem" xml:space="preserve"><value>C 盘清理</value></data>
+  <data name="QcCacheResult" xml:space="preserve"><value>已清理 {0} 个文件，释放 {1}。</value></data>
+  <data name="QcWorking" xml:space="preserve"><value>正在清理…</value></data>
+  <data name="QcCache" xml:space="preserve"><value>缓存</value></data>
+  <data name="QcMemory" xml:space="preserve"><value>内存</value></data>
+  <data name="QcTitle" xml:space="preserve"><value>垃圾清理</value></data>
+  <data name="MenuCopy" xml:space="preserve"><value>复制</value></data>
+  <data name="MsgStartupFailed" xml:space="preserve"><value>无法修改「{0}」：{1}</value></data>
+  <data name="MsgStartupCancelled" xml:space="preserve"><value>已取消管理员授权，「{0}」未修改。</value></data>
+  <data name="MsgStartupDisabled" xml:space="preserve"><value>已关闭「{0}」开机自启。</value></data>
+  <data name="MsgStartupEnabled" xml:space="preserve"><value>已开启「{0}」开机自启。</value></data>
+  <data name="StartupSourceScheduledTask" xml:space="preserve"><value>计划任务</value></data>
+  <data name="StartupSourceMachineStartupFolder" xml:space="preserve"><value>启动文件夹（所有用户）</value></data>
+  <data name="StartupSourceUserStartupFolder" xml:space="preserve"><value>启动文件夹（当前用户）</value></data>
+  <data name="StartupSourceMachineRunRegistry" xml:space="preserve"><value>注册表（所有用户）</value></data>
+  <data name="StartupSourceUserRunRegistry" xml:space="preserve"><value>注册表（当前用户）</value></data>
+  <data name="StartupNonExecTarget" xml:space="preserve"><value>系统内置操作</value></data>
 </root>
