@@ -19,8 +19,7 @@ C# · WPF · .NET 10 · 无后台服务 · 无内核驱动 · 按需提权</p>
 
 </div>
 
-> [!NOTE]
-> Utility 是个人项目，与 Lenovo / 联想、NVIDIA 无隶属或背书关系。厂商写入功能仅对 **83JJ + BIOS PTCN18WW** 开放；其他机型请先阅读[兼容性](#兼容性)。
+Utility 是个人项目，与 Lenovo / 联想、NVIDIA 无隶属或背书关系。厂商写入功能仅对 **83JJ + BIOS PTCN18WW** 开放；其他机型请先阅读[兼容性](#兼容性)。
 
 ---
 
