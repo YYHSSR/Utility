@@ -227,6 +227,30 @@ dotnet publish .\src\Utility.App\Utility.App.csproj `
 - 涉及硬件写入的改动，请说明目标机型、BIOS 版本、回读结果与恢复方案。
 - 安全漏洞请先与作者私下联系，不要在公开 Issue 中披露可利用细节。
 
+## 贡献者 / Contributors
+
+感谢以下伙伴参与 Utility 的开发、调试与文档工作：
+
+<table>
+  <tr>
+    <td align="center" width="180">
+      <a href="https://github.com/YYHSSR"><img src="https://github.com/YYHSSR.png" width="72" alt="YYHSSR" /><br />
+      <sub><b>YYHSSR</b></sub></a><br />
+      <sub>作者 · 维护者</sub>
+    </td>
+    <td align="center" width="180">
+      <a href="https://chatgpt.com/"><img src="https://img.shields.io/badge/ChatGPT-Desktop-10A37F?style=for-the-badge" width="132" alt="ChatGPT Desktop" /></a><br />
+      <sub><b>ChatGPT（桌面版）</b></sub><br />
+      <sub>AI 开发协作</sub>
+    </td>
+    <td align="center" width="180">
+      <a href="https://claude.ai/"><img src="https://img.shields.io/badge/Claude-Desktop-D97757?style=for-the-badge" width="132" alt="Claude Desktop" /></a><br />
+      <sub><b>Claude（桌面版）</b></sub><br />
+      <sub>AI 开发协作</sub>
+    </td>
+  </tr>
+</table>
+
 ## 许可证
 
 本项目采用 **Utility 非商业共享许可证 1.0（UNCSL-1.0）**。
