@@ -186,7 +186,7 @@ public sealed partial class LenovoWmiProvider
     // A running process cannot survive a reboot. Retry failed reads, cache successful ones.
     private static string? _bootSession;
 
-    private static string? ReadBootSession()
+    internal static string? ReadBootSession()
     {
         try
         {

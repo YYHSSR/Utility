@@ -15,10 +15,12 @@ internal static class DeviceDriverInventory
     private static readonly Guid Instance = new("78c34fc8-104a-4aca-9ea4-524d52996e57");
     private static readonly Guid Driver = new("a8b865dd-2e3d-4094-ad97-e593a70c75d6");
 
-    public static List<InstalledDriverEntry> Read(Func<string, string, string, DriverCategory> classify, CancellationToken ct)
+    public static List<InstalledDriverEntry> Read(Func<string, string, string, DriverCategory> classify, CancellationToken ct,
+        bool presentOnly = true)
     {
-        const uint presentAllClasses = 0x02 | 0x04;
-        using var devices = SetupDiGetClassDevsW(IntPtr.Zero, null, IntPtr.Zero, presentAllClasses);
+        const uint allClasses = 0x04;
+        const uint present = 0x02;
+        using var devices = SetupDiGetClassDevsW(IntPtr.Zero, null, IntPtr.Zero, allClasses | (presentOnly ? present : 0));
         if (devices.IsInvalid)
             throw new Win32Exception(Marshal.GetLastWin32Error());
 
@@ -50,12 +52,20 @@ internal static class DeviceDriverInventory
             var provider = ReadText(Driver, 9);
             var version = ReadText(Driver, 3);
             var inf = ReadText(Driver, 5);
-            var hardwareId = ReadText(Device, 3);
+            var hardwareSize = Read(Device, 3, out var hardwareType);
+            var hardwareIds = hardwareSize > 2 && hardwareType is 18 or 0x2012
+                ? Encoding.Unicode.GetString(buffer, 0, hardwareSize).Split('\0', StringSplitOptions.RemoveEmptyEntries)
+                : [];
             var category = classify(name, provider, ReadText(Device, 9));
             var date = Read(Driver, 2, out var type) == 8 && type == 16
                 ? DateTime.FromFileTimeUtc(BitConverter.ToInt64(buffer)).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
                 : "";
-            result.Add(new(name, provider, version, date, inf, hardwareId, category));
+            result.Add(new(name, provider, version, date, inf, hardwareIds.FirstOrDefault() ?? "", category)
+            {
+                DeviceInstanceId = instanceId,
+                HardwareIds = hardwareIds,
+                IsHealthy = CM_Get_DevNode_Status(out var status, out _, info.Instance, 0) == 0 && (status & 0x400) == 0
+            });
         }
         return result;
 
@@ -83,6 +93,9 @@ internal static class DeviceDriverInventory
             return checked((int)required);
         }
     }
+
+    [DllImport("cfgmgr32.dll")]
+    private static extern uint CM_Get_DevNode_Status(out uint status, out uint problem, uint devInst, uint flags);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct DeviceInfo { public uint Size; public Guid ClassGuid; public uint Instance; public UIntPtr Reserved; }

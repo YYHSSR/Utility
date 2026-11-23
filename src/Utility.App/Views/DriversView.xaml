@@ -3,24 +3,20 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:Utility.App.Localization"
              xmlns:ctl="clr-namespace:Utility.App.Controls">
-    <Grid Margin="0,0,8,6">
+    <Grid Margin="0,0,8,6" DataContext="{Binding DriverUpdates}">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <DockPanel Grid.Row="0" Margin="0,0,0,16">
+        <DockPanel Margin="0,0,0,16">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                <ctl:SelectableTextBlock VerticalAlignment="Center" Style="{StaticResource MutedLabelStyle}" Text="{loc:Tr LblCategory}" Margin="0,0,10,0" />
-                <ComboBox Width="170" ItemsSource="{Binding DriverCategories}" SelectedItem="{Binding SelectedDriverCategory}">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding Converter={StaticResource LocalizedEnum}, ConverterParameter=DriverCategory}" />
-                        </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
-                <Button Style="{StaticResource PrimaryButtonStyle}" Tag="&#xE8A7;" Content="{loc:Tr BtnLenovoDrivers}" Margin="12,0,0,0"
-                        Command="{Binding OpenExternalDriverLinkCommand}" CommandParameter="{Binding DriverLinks.Lenovo83JJDriverPage}" />
+                <Button Tag="&#xE72C;" Content="{loc:Tr DriverCheckButton}" Command="{Binding ScanCommand}" Margin="0,0,8,0" />
+                <Button Content="{loc:Tr DriverCleanupButton}" Command="{Binding CleanupCommand}" Margin="0,0,8,0"
+                        Visibility="{Binding HasPendingCleanup, Converter={StaticResource BoolToVis}}" />
+                <Button Style="{StaticResource PrimaryButtonStyle}" Tag="&#xE896;" Content="{loc:Tr DriverInstallButton}"
+                        Command="{Binding InstallCommand}" />
             </StackPanel>
             <StackPanel Orientation="Horizontal">
                 <ContentControl Style="{StaticResource PageIconStyle}" Tag="&#xE950;" />
@@ -28,18 +24,138 @@
             </StackPanel>
         </DockPanel>
 
-        <Border Grid.Row="1" Style="{StaticResource TableCardStyle}">
-            <DataGrid ItemsSource="{Binding FilteredDrivers}">
-                <DataGrid.Columns>
-                    <DataGridTextColumn Header="{loc:Tr ColCategory}" Binding="{Binding Category, Converter={StaticResource LocalizedEnum}, ConverterParameter=DriverCategory}" Width="0.9*" />
-                    <DataGridTextColumn Header="{loc:Tr ColDevice}" Binding="{Binding DeviceName}" Width="2*" />
-                    <DataGridTextColumn Header="{loc:Tr ColProvider}" Binding="{Binding ProviderName}" Width="1.2*" />
-                    <DataGridTextColumn Header="{loc:Tr ColVersion}" Binding="{Binding DriverVersion}" Width="*" />
-                    <DataGridTextColumn Header="{loc:Tr ColDate}" Binding="{Binding DriverDate}" Width="0.8*" />
-                    <DataGridTextColumn Header="{loc:Tr ColInf}" Binding="{Binding InfName}" Width="0.8*" />
-                </DataGrid.Columns>
-            </DataGrid>
+        <!-- Status bar: icon + colour follow StatusTone (info / busy / ok / warn) -->
+        <Border Grid.Row="1" Margin="0,0,0,12" Padding="14,10" CornerRadius="10" BorderThickness="1">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Background" Value="#F3F6FB" />
+                    <Setter Property="BorderBrush" Value="#E3E8F0" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding StatusTone}" Value="busy">
+                            <Setter Property="Background" Value="#EEF3FF" />
+                            <Setter Property="BorderBrush" Value="#D6E2FF" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding StatusTone}" Value="ok">
+                            <Setter Property="Background" Value="#ECFAF1" />
+                            <Setter Property="BorderBrush" Value="#C8EED7" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding StatusTone}" Value="warn">
+                            <Setter Property="Background" Value="{StaticResource WarningSoftBrush}" />
+                            <Setter Property="BorderBrush" Value="#F5DDB0" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <StackPanel>
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Left" FontSize="15" Margin="0,1,10,0" VerticalAlignment="Top">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource IconStyle}">
+                                <Setter Property="Text" Value="&#xE946;" />
+                                <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding StatusTone}" Value="busy">
+                                        <Setter Property="Text" Value="&#xE895;" />
+                                        <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding StatusTone}" Value="ok">
+                                        <Setter Property="Text" Value="&#xE930;" />
+                                        <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding StatusTone}" Value="warn">
+                                        <Setter Property="Text" Value="&#xE7BA;" />
+                                        <Setter Property="Foreground" Value="{StaticResource WarningBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <ctl:SelectableTextBlock Text="{Binding Status}" TextWrapping="Wrap" LineHeight="20" VerticalAlignment="Center"
+                                             AutomationProperties.LiveSetting="Polite" />
+                </DockPanel>
+                <ProgressBar Height="3" Margin="25,8,0,0" IsIndeterminate="{Binding IsBusy}"
+                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+            </StackPanel>
         </Border>
 
+        <Border Grid.Row="2" Style="{StaticResource TableCardStyle}">
+            <Grid>
+            <DataGrid ItemsSource="{Binding Available}" SelectedItem="{Binding Selected}" SelectionMode="Single">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="{loc:Tr ColName}" Binding="{Binding Title}" Width="2.4*" />
+                    <DataGridTextColumn Header="{loc:Tr DriverCurrentVersion}" Binding="{Binding CurrentVersion}" Width="*" />
+                    <DataGridTextColumn Header="{loc:Tr DriverNewVersion}" Binding="{Binding NewVersion}" Width="*" />
+                    <DataGridTextColumn Header="{loc:Tr ColDate}" Binding="{Binding ReleaseDate}" Width="0.8*" />
+                </DataGrid.Columns>
+            </DataGrid>
+                <!-- Empty state (no updates listed and not busy): "up to date" after a clean check, otherwise "not checked yet" -->
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding Available.Count}" Value="0" />
+                                        <Condition Binding="{Binding IsBusy}" Value="False" />
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </MultiDataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <Border Width="64" Height="64" CornerRadius="32" HorizontalAlignment="Center">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="{StaticResource BgElevatedBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding StatusTone}" Value="ok">
+                                        <Setter Property="Background" Value="#ECFAF1" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="26">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource IconStyle}">
+                                    <Setter Property="Text" Value="&#xE950;" />
+                                    <Setter Property="Foreground" Value="{StaticResource TextTertiaryBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding StatusTone}" Value="ok">
+                                            <Setter Property="Text" Value="&#xE73E;" />
+                                            <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Border>
+                    <TextBlock Margin="0,14,0,0" HorizontalAlignment="Center" FontSize="15" FontWeight="SemiBold">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value="{loc:Tr EmptyDriversNotChecked}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding StatusTone}" Value="ok">
+                                        <Setter Property="Text" Value="{loc:Tr EmptyDriversUpToDate}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock Margin="0,4,0,0" HorizontalAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionStyle}">
+                                <Setter Property="Text" Value="{loc:Tr EmptyDriversNotCheckedHint}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding StatusTone}" Value="ok">
+                                        <Setter Property="Text" Value="{loc:Tr EmptyDriversUpToDateHint}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+            </Grid>
+        </Border>
     </Grid>
 </UserControl>

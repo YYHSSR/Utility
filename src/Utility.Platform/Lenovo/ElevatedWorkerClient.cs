@@ -126,8 +126,10 @@ public sealed class ElevatedWorkerClient
         }
 
         var cooling = templateRequest.Operation == ElevatedOperation.RunCoolingCycle;
+        var driverInstall = templateRequest.Operation == ElevatedOperation.InstallLenovoDriver;
+        var driverCleanup = templateRequest.Operation == ElevatedOperation.CleanupLenovoDrivers;
         using var timeoutCts = cooling ? new CancellationTokenSource() : CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(cooling ? 65 : 25));
+        timeoutCts.CancelAfter(driverInstall ? TimeSpan.FromMinutes(45) : TimeSpan.FromSeconds(cooling || driverCleanup ? 65 : 25));
 
         try
         {

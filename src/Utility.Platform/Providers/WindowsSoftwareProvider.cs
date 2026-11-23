@@ -227,7 +227,7 @@ public sealed class WindowsSoftwareProvider : ISoftwareInventoryProvider
         {
             DesktopRegistration = new DesktopUninstallRegistration(
                 childName, sub.GetValue("UninstallString") as string, sub.GetValue("InstallLocation") as string,
-                sub.GetValue("WindowsInstaller") is 1, sub.GetValue("NoRemove") is 1)
+                sub.GetValue("WindowsInstaller") is 1, sub.GetValue("NoRemove") is 1, sub.GetValue("DisplayIcon") as string)
         };
     }
 

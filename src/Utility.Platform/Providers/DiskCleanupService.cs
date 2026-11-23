@@ -14,6 +14,8 @@ public sealed record DiskScanResult(IReadOnlyList<ScannedFile> Files, long Visit
 
 public sealed record PersonalFileScan(DiskScanResult Large, DiskScanResult Duplicate);
 
+public sealed record SystemDriveScan(DiskScanResult Temporary, Task<DiskScanResult> Duplicate);
+
 public sealed record CleanupBatchResult(IReadOnlyList<string> Removed, IReadOnlyList<string> Errors, string? BackupFolder = null);
 
 public sealed class DiskCleanupService
@@ -24,12 +26,10 @@ public sealed class DiskCleanupService
     private static readonly string UserFolder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     private static readonly string LocalData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
     private static readonly string SystemDrive = Path.GetPathRoot(WindowsFolder)!;
-    private static readonly string[] TempRoots =
-    [
-        Path.Combine(LocalData, "Temp"),
-        Path.Combine(LocalData, "D3DSCache"),
-        Path.Combine(WindowsFolder, "Temp")
-    ];
+    private static readonly string UserProfiles = Path.Combine(SystemDrive, "Users");
+    private static readonly string PublicProfile = Path.Combine(UserProfiles, "Public");
+    private static readonly string[] TempRoots = SystemTempRoots();
+    private static readonly HashSet<string> TempAncestors = FindTempAncestors();
     private static readonly string[] ProtectedFolders =
     [
         WindowsFolder,
@@ -39,24 +39,36 @@ public sealed class DiskCleanupService
         Path.Combine(SystemDrive, "$Recycle.Bin"),
         Path.Combine(SystemDrive, "$WinREAgent"),
         Path.Combine(SystemDrive, "$WINDOWS.~BT"),
+        Path.Combine(SystemDrive, "$WINDOWS.~WS"),
+        Path.Combine(SystemDrive, "Boot"),
         Path.Combine(SystemDrive, "Program Files"),
         Path.Combine(SystemDrive, "Program Files (x86)"),
         Path.Combine(SystemDrive, "ProgramData"),
-        Path.Combine(UserFolder, "AppData")
+        Path.Combine(UserFolder, "AppData"),
+        LocalData
     ];
+    private static readonly HashSet<string> ProtectedRootFiles = new(
+        new[] { "pagefile.sys", "swapfile.sys", "hiberfil.sys", "DumpStack.log.tmp" }
+            .Select(name => Path.Combine(SystemDrive, name)), StringComparer.OrdinalIgnoreCase);
 
     public string SystemDrivePath => SystemDrive;
-    public string UserFolderPath => UserFolder;
 
     public Task<DiskScanResult> ScanAsync(DiskScanKind kind, string root, long minimumBytes,
         IProgress<long>? progress, CancellationToken ct) =>
         Task.Run(() => kind switch
         {
-            DiskScanKind.Temporary => ScanTemporary(progress, ct),
+            DiskScanKind.Temporary => IndexSystemDrive(includeDuplicates: false, progress, ct).Temporary,
             DiskScanKind.Large => ScanPersonal(root, null, minimumBytes, progress, ct).Large,
             DiskScanKind.Duplicate => ScanPersonal(null, root, minimumBytes, progress, ct).Duplicate,
             _ => throw new ArgumentOutOfRangeException(nameof(kind))
         }, ct);
+
+    public async Task<SystemDriveScan> ScanSystemDriveAsync(IProgress<long>? progress, CancellationToken ct)
+    {
+        var (temporary, sizes, visited) = await Task.Run(() => IndexSystemDrive(includeDuplicates: true, progress, ct), ct)
+            .ConfigureAwait(false);
+        return new SystemDriveScan(temporary, Task.Run(() => sizes.FindMatches(visited, ct), ct));
+    }
 
     public Task<PersonalFileScan> ScanPersonalAsync(string largeFolder, string duplicateFolder, long minimumBytes,
         IProgress<long>? progress, CancellationToken ct) =>
@@ -66,28 +78,67 @@ public sealed class DiskCleanupService
         IReadOnlyList<ScannedFile> selected, CancellationToken stop = default) =>
         Task.Run(() => Remove(kind, all, selected, stop));
 
-    private static DiskScanResult ScanTemporary(IProgress<long>? progress, CancellationToken ct)
-    {
-        var files = new List<ScannedFile>();
-        var cutoff = DateTime.UtcNow.AddDays(-2);
-        long visited = 0;
-        var limited = false;
-        foreach (var folder in TempRoots.Where(IsOnSystemDrive))
+    private static string[] SystemTempRoots() =>
+        new[]
         {
-            foreach (var file in WalkFiles(folder, _ => false, ct))
+            Path.Combine(WindowsFolder, "Temp"),
+            Path.Combine(WindowsFolder, "SystemTemp"),
+            Path.Combine(LocalData, "Temp"),
+            Path.Combine(LocalData, "D3DSCache"),
+            Path.Combine(LocalData, "NVIDIA", "DXCache"),
+            Path.Combine(LocalData, "NVIDIA", "GLCache"),
+            Path.Combine(UserFolder, "AppData", "LocalLow", "NVIDIA", "DXCache")
+        }.Where(IsOnSystemDrive).ToArray();
+
+    private static HashSet<string> FindTempAncestors()
+    {
+        var ancestors = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var root in TempRoots)
+        {
+            for (var path = Path.GetDirectoryName(root); path is not null; path = Path.GetDirectoryName(path))
+                ancestors.Add(path);
+        }
+        return ancestors;
+    }
+
+    private static (DiskScanResult Temporary, DuplicateSizes Sizes, long DuplicateVisited) IndexSystemDrive(
+        bool includeDuplicates, IProgress<long>? progress, CancellationToken ct)
+    {
+        var temporary = new PriorityQueue<ScannedFile, long>();
+        var duplicateSizes = new DuplicateSizes();
+        var cutoff = DateTime.UtcNow.AddDays(-2);
+        long visited = 0, tempVisited = 0, duplicateVisited = 0;
+        var tempLimited = false;
+        var tempFolder = false;
+        var duplicateFolder = false;
+
+        bool SkipFolder(string folder)
+        {
+            tempFolder = TempRoots.Any(root => IsInOrEqual(folder, root));
+            duplicateFolder = includeDuplicates && !tempFolder && !IsProtected(folder);
+            return !tempFolder && !duplicateFolder && !TempAncestors.Contains(folder);
+        }
+
+        foreach (var file in WalkFiles(SystemDrive, SkipFolder, ct))
+        {
+            if (++visited % 2048 == 0)
+                progress?.Report(visited);
+            if (tempFolder)
             {
-                if (++visited % 2048 == 0)
-                    progress?.Report(visited);
-                if (file.LastWriteUtc > cutoff)
-                    continue;
-                if (files.Count < ResultLimit)
-                    files.Add(file);
-                else
-                    limited = true;
+                tempVisited++;
+                if (file.LastWriteUtc <= cutoff)
+                    tempLimited |= AddLargest(temporary, file);
+            }
+            else if (duplicateFolder && !ProtectedRootFiles.Contains(file.Path))
+            {
+                duplicateVisited++;
+                duplicateSizes.Add(file);
             }
         }
-        return new DiskScanResult(files.OrderByDescending(file => file.Bytes).ToArray(), visited, limited,
-            new DriveInfo(SystemDrive).AvailableFreeSpace);
+
+        progress?.Report(visited);
+        return (SortedFiles(temporary, tempVisited, tempLimited, new DriveInfo(SystemDrive).AvailableFreeSpace),
+            duplicateSizes, duplicateVisited);
     }
 
     private static PersonalFileScan ScanPersonal(string? largeFolder, string? duplicateFolder, long minimumBytes,
@@ -98,82 +149,120 @@ public sealed class DiskCleanupService
         var roots = new[] { largeRoot, duplicateRoot }.OfType<string>()
             .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var largeFiles = new PriorityQueue<ScannedFile, long>();
-        var duplicateSizes = new List<ScannedFile>();
+        var duplicateSizes = new DuplicateSizes();
         long visited = 0, largeVisited = 0, duplicateVisited = 0;
         var largeLimited = false;
         foreach (var root in roots.Where(root => !roots.Any(parent => IsChild(root, parent))))
         {
-            foreach (var file in WalkFiles(root, IsProtected, ct))
+            var scanLarge = false;
+            var scanDuplicate = false;
+            bool SkipFolder(string folder)
+            {
+                scanLarge = largeRoot is not null && IsInOrEqual(folder, largeRoot);
+                scanDuplicate = duplicateRoot is not null && IsInOrEqual(folder, duplicateRoot);
+                return IsProtected(folder);
+            }
+
+            foreach (var file in WalkFiles(root, SkipFolder, ct))
             {
                 if (++visited % 2048 == 0)
                     progress?.Report(visited);
-                if (largeRoot is not null && IsChild(file.Path, largeRoot))
+                if (ProtectedRootFiles.Contains(file.Path))
+                    continue;
+                if (scanLarge)
                 {
                     largeVisited++;
                     if (file.Bytes >= minimumBytes)
-                    {
-                        if (largeFiles.Count < ResultLimit)
-                            largeFiles.Enqueue(file, file.Bytes);
-                        else
-                        {
-                            largeFiles.EnqueueDequeue(file, file.Bytes);
-                            largeLimited = true;
-                        }
-                    }
+                        largeLimited |= AddLargest(largeFiles, file);
                 }
-                if (duplicateRoot is not null && IsChild(file.Path, duplicateRoot))
+                if (scanDuplicate)
                 {
                     duplicateVisited++;
-                    if (file.Bytes > 0)
-                        duplicateSizes.Add(file);
+                    duplicateSizes.Add(file);
                 }
             }
         }
 
-        var (duplicateFiles, duplicateLimited) = FindDuplicates(duplicateSizes, ct);
-        var large = largeFiles.UnorderedItems.Select(item => item.Element).OrderByDescending(file => file.Bytes).ToArray();
-        return new PersonalFileScan(new DiskScanResult(large, largeVisited, largeLimited, null),
-            new DiskScanResult(duplicateFiles, duplicateVisited, duplicateLimited, null));
+        progress?.Report(visited);
+        return new PersonalFileScan(SortedFiles(largeFiles, largeVisited, largeLimited),
+            duplicateSizes.FindMatches(duplicateVisited, ct));
     }
 
-    private static (List<ScannedFile> Files, bool Limited) FindDuplicates(List<ScannedFile> files, CancellationToken ct)
+    private static bool AddLargest(PriorityQueue<ScannedFile, long> files, ScannedFile file)
     {
-        var matches = new List<ScannedFile>();
-        var groupNumber = 0;
-        foreach (var sameSize in files.GroupBy(file => file.Bytes).Where(g => g.Count() > 1).OrderByDescending(g => g.Key))
+        if (files.Count == ResultLimit)
         {
-            ct.ThrowIfCancellationRequested();
-            // A sample can rule out a match. Only a full SHA-256 can put files in a result group.
-            IEnumerable<ScannedFile> candidates = sameSize;
-            if (sameSize.Key >= 256 * 1024)
-                candidates = sameSize.GroupBy(file => TryHash(file, ct, sampleOnly: true))
-                    .Where(sample => sample.Key is not null && sample.Count() > 1)
-                    .SelectMany(sample => sample);
-            var hashed = candidates.Select(file => file with { Digest = TryHash(file, ct) }).Where(file => file.Digest is not null);
-            foreach (var group in hashed.GroupBy(file => file.Digest).Where(g => g.Count() > 1))
-            {
-                var room = ResultLimit - matches.Count;
-                if (room < 2) return (matches, true);
-                groupNumber++;
-                matches.AddRange(group.OrderBy(file => file.Path, StringComparer.OrdinalIgnoreCase)
-                    .Take(room).Select(file => file with { Group = groupNumber }));
-                if (group.Count() > room) return (matches, true);
-            }
+            files.EnqueueDequeue(file, file.Bytes);
+            return true;
         }
-        return (matches, false);
+        files.Enqueue(file, file.Bytes);
+        return false;
+    }
+
+    private static DiskScanResult SortedFiles(PriorityQueue<ScannedFile, long> files, long visited, bool limited,
+        long? free = null) =>
+        new(files.UnorderedItems.Select(item => item.Element).OrderByDescending(file => file.Bytes).ToArray(),
+            visited, limited, free);
+
+    private sealed class DuplicateSizes
+    {
+        private readonly Dictionary<long, ScannedFile> _single = [];
+        private readonly Dictionary<long, List<ScannedFile>> _shared = [];
+
+        public void Add(ScannedFile file)
+        {
+            if (file.Bytes == 0)
+                return;
+            if (_shared.TryGetValue(file.Bytes, out var bucket))
+                bucket.Add(file);
+            else if (_single.Remove(file.Bytes, out var first))
+                _shared.Add(file.Bytes, [first, file]);
+            else
+                _single.Add(file.Bytes, file);
+        }
+
+        public DiskScanResult FindMatches(long visited, CancellationToken ct)
+        {
+            _single.Clear();
+            var matches = new List<ScannedFile>();
+            var groupNumber = 0;
+            ct.ThrowIfCancellationRequested();
+            foreach (var (size, sameSize) in _shared.OrderByDescending(bucket => bucket.Key))
+            {
+                ct.ThrowIfCancellationRequested();
+                // Use a small sample to reject mismatches before reading large files in full.
+                IEnumerable<ScannedFile> candidates = sameSize;
+                if (size >= 256 * 1024)
+                    candidates = sameSize.GroupBy(file => TryHash(file, ct, sampleOnly: true))
+                        .Where(sample => sample.Key is not null && sample.Count() > 1)
+                        .SelectMany(sample => sample);
+                var hashed = candidates.Select(file => file with { Digest = TryHash(file, ct) })
+                    .Where(file => file.Digest is not null);
+                foreach (var group in hashed.GroupBy(file => file.Digest).Where(g => g.Count() > 1))
+                {
+                    var room = ResultLimit - matches.Count;
+                    if (room < 2) return new DiskScanResult(matches, visited, true, null);
+                    groupNumber++;
+                    matches.AddRange(group.OrderBy(file => file.Path, StringComparer.OrdinalIgnoreCase)
+                        .Take(room).Select(file => file with { Group = groupNumber }));
+                    if (group.Count() > room) return new DiskScanResult(matches, visited, true, null);
+                }
+            }
+            return new DiskScanResult(matches, visited, false, null);
+        }
     }
 
     private static string? TryHash(ScannedFile file, CancellationToken ct, bool sampleOnly = false)
     {
         try
         {
-            if (!Matches(file))
-                return null;
             ct.ThrowIfCancellationRequested();
+            if (!HasSafeParents(file.Path))
+                return null;
             using var stream = new FileStream(file.Path, FileMode.Open, FileAccess.Read, FileShare.Read, 1,
                 sampleOnly ? FileOptions.RandomAccess : FileOptions.SequentialScan);
             if (!TryGetInfo(stream.SafeFileHandle, out var info) || info.Links != 1 || info.Size != file.Bytes ||
-                info.LastWriteUtc != file.LastWriteUtc)
+                info.LastWriteUtc != file.LastWriteUtc || (info.Attributes & (UnsafePath | FileAttributes.System)) != 0)
                 return null;
 
             if (sampleOnly)
@@ -200,10 +289,12 @@ public sealed class DiskCleanupService
         var buffer = ArrayPool<byte>.Shared.Rent(128 * 1024);
         try
         {
-            int count;
-            while ((count = stream.Read(buffer)) > 0)
+            while (true)
             {
                 ct.ThrowIfCancellationRequested();
+                var count = stream.Read(buffer);
+                if (count == 0)
+                    break;
                 hash.AppendData(buffer, 0, count);
             }
             return Convert.ToHexString(hash.GetHashAndReset());
@@ -220,6 +311,7 @@ public sealed class DiskCleanupService
         var removed = new List<string>();
         var errors = new List<string>();
         var selection = new HashSet<ScannedFile>(selected);
+        var tempCutoff = DateTime.UtcNow.AddDays(-2);
         var scanned = all.ToHashSet();
         var groups = all.Where(file => file.Group.HasValue && file.Digest is not null).ToLookup(file => (file.Group, file.Digest));
         foreach (var batch in selected.Distinct().GroupBy(file => kind == DiskScanKind.Duplicate ? (file.Group, file.Digest) : default))
@@ -238,15 +330,14 @@ public sealed class DiskCleanupService
 
                     if (kind == DiskScanKind.Temporary)
                     {
-                        if (!TempRoots.Any(root => IsOnSystemDrive(root) && IsChild(file.Path, root)) ||
-                            file.LastWriteUtc > DateTime.UtcNow.AddDays(-2))
+                        if (!TempRoots.Any(root => IsChild(file.Path, root)) || file.LastWriteUtc > tempCutoff)
                             throw new IOException("File is outside the recognized temporary locations or was recently modified.");
 
-                        DeleteTemporaryFile(file);
+                        DeleteFilePermanently(file);
                     }
                     else
                     {
-                        if (IsProtected(file.Path))
+                        if (IsProtected(file.Path) || ProtectedRootFiles.Contains(file.Path))
                             throw new IOException("Protected location.");
 
                         if (kind == DiskScanKind.Duplicate)
@@ -319,15 +410,20 @@ public sealed class DiskCleanupService
         string.Equals(Path.GetPathRoot(path), SystemDrive, StringComparison.OrdinalIgnoreCase);
 
     private static bool IsProtected(string path) => ProtectedFolders.Any(root => IsInOrEqual(path, root)) ||
-        IsChild(path, Path.Combine(SystemDrive, "Users")) && !IsInOrEqual(path, UserFolder);
+        IsChild(path, UserProfiles) && !IsInOrEqual(path, UserFolder) && !IsInOrEqual(path, PublicProfile);
 
     internal static bool IsInOrEqual(string path, string root) =>
         string.Equals(Path.TrimEndingDirectorySeparator(path), Path.TrimEndingDirectorySeparator(root), StringComparison.OrdinalIgnoreCase)
         || IsChild(path, root);
 
-    internal static bool IsChild(string path, string parent) =>
-        !Path.TrimEndingDirectorySeparator(path).Equals(Path.TrimEndingDirectorySeparator(parent), StringComparison.OrdinalIgnoreCase) &&
-        path.StartsWith(Path.EndsInDirectorySeparator(parent) ? parent : parent + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    internal static bool IsChild(string path, string parent)
+    {
+        var child = Path.TrimEndingDirectorySeparator(path.AsSpan());
+        var root = Path.TrimEndingDirectorySeparator(parent.AsSpan());
+        return child.Length > root.Length && child.StartsWith(root, StringComparison.OrdinalIgnoreCase) &&
+            (Path.EndsInDirectorySeparator(root) || child[root.Length] == Path.DirectorySeparatorChar ||
+                child[root.Length] == Path.AltDirectorySeparatorChar);
+    }
 
     internal static bool HasSafeParents(string path)
     {
@@ -354,7 +450,8 @@ public sealed class DiskCleanupService
         }
     }
 
-    internal static IEnumerable<ScannedFile> WalkFiles(string root, Func<string, bool> skipFolder, CancellationToken ct)
+    internal static IEnumerable<ScannedFile> WalkFiles(string root, Func<string, bool> skipFolder, CancellationToken ct,
+        Action<string>? onDirectory = null)
     {
         var pending = new Stack<string>();
         pending.Push(root);
@@ -367,6 +464,7 @@ public sealed class DiskCleanupService
             {
                 if (skipFolder(folder) || !HasSafeParents(folder))
                     continue;
+                onDirectory?.Invoke(folder);
                 entries = new DirectoryInfo(folder).EnumerateFileSystemInfos("*", options).GetEnumerator();
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { continue; }
@@ -391,13 +489,13 @@ public sealed class DiskCleanupService
         }
     }
 
-    private static ScannedFile? ReadStamp(FileInfo file)
+    internal static ScannedFile? ReadStamp(FileInfo file)
     {
         try { return new ScannedFile(file.FullName, file.Length, file.LastWriteTimeUtc); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }
     }
 
-    private static void DeleteTemporaryFile(ScannedFile file)
+    internal static void DeleteFilePermanently(ScannedFile file)
     {
         const uint deleteAndReadAttributes = 0x10080;
         const uint openExisting = 3;
@@ -407,17 +505,31 @@ public sealed class DiskCleanupService
         if (handle.IsInvalid || !TryGetInfo(handle, out var info) || info.Links != 1 ||
             info.Size != file.Bytes || info.LastWriteUtc != file.LastWriteUtc ||
             (info.Attributes & (UnsafePath | FileAttributes.Directory | FileAttributes.System)) != 0)
-            throw new IOException("Temporary file is in use, changed, or has another link.");
+            throw new IOException("The file is in use, changed, or has another link.");
 
-        var buffer = new char[32768];
-        var count = GetFinalPathNameByHandle(handle, buffer, (uint)buffer.Length, 0);
-        if (count < 4 || count >= buffer.Length ||
-            !string.Equals(new string(buffer, 0, (int)count), @"\\?\" + file.Path, StringComparison.OrdinalIgnoreCase))
-            throw new IOException("Temporary path no longer resolves to the scanned file.");
+        var buffer = ArrayPool<char>.Shared.Rent(32768);
+        try
+        {
+            var count = GetFinalPathNameByHandle(handle, buffer, (uint)buffer.Length, 0);
+            if (count < 4 || count >= buffer.Length ||
+                !buffer.AsSpan(0, 4).SequenceEqual(@"\\?\") ||
+                !buffer.AsSpan(4, (int)count - 4).Equals(file.Path.AsSpan(), StringComparison.OrdinalIgnoreCase))
+                throw new IOException("The path no longer resolves to the scanned file.");
+        }
+        finally
+        {
+            ArrayPool<char>.Shared.Return(buffer);
+        }
 
+        const int dispositionInfo = 4;
+        const int dispositionInfoEx = 21;
         byte disposition = 1;
-        if (!SetFileInformationByHandle(handle, 4, ref disposition, sizeof(byte)))
-            throw new IOException("Windows refused to remove the temporary file.",
+        uint readOnlyDisposition = 0x01 | 0x02 | 0x10; // Delete, POSIX semantics, ignore read-only.
+        var removed = (info.Attributes & FileAttributes.ReadOnly) != 0
+            ? SetFileDispositionEx(handle, dispositionInfoEx, ref readOnlyDisposition, sizeof(uint))
+            : SetFileInformationByHandle(handle, dispositionInfo, ref disposition, sizeof(byte));
+        if (!removed)
+            throw new IOException("Windows refused to remove the file.",
                 new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()));
     }
 
@@ -444,4 +556,8 @@ public sealed class DiskCleanupService
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetFileInformationByHandle(SafeFileHandle handle, int infoClass, ref byte info, int size);
+
+    [DllImport("kernel32.dll", EntryPoint = "SetFileInformationByHandle", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetFileDispositionEx(SafeFileHandle handle, int infoClass, ref uint info, int size);
 }

@@ -65,14 +65,29 @@
   <data name="TabStartupEntries" xml:space="preserve"><value>开机启动项</value></data>
   <data name="TabLenovoLeftovers" xml:space="preserve"><value>联想残留只读扫描</value></data>
   <data name="BtnOpenWindowsApps" xml:space="preserve"><value>在 Windows 已安装应用中打开</value></data>
-  <data name="BtnOpenWindowsStartup" xml:space="preserve"><value>打开 Windows 启动应用设置</value></data>
+  <data name="BtnOpenWindowsStartup" xml:space="preserve"><value>系统启动设置</value></data>
   <data name="BtnScanLeftovers" xml:space="preserve"><value>执行只读残留扫描</value></data>
   <data name="FanHeader" xml:space="preserve"><value>自定义风扇曲线</value></data>
   <data name="BtnReadFanTable" xml:space="preserve"><value>提权读取固件风扇表</value></data>
   <data name="BtnApplyFanCurve" xml:space="preserve"><value>应用风扇曲线</value></data>
   <data name="BtnRestoreFanDefault" xml:space="preserve"><value>恢复固件默认风扇策略</value></data>
   <data name="DriversHeader" xml:space="preserve"><value>官方驱动</value></data>
-  <data name="BtnLenovoDrivers" xml:space="preserve"><value>联想 83JJ 官方驱动</value></data>
+  <data name="DriverCheckButton" xml:space="preserve"><value>检测更新</value></data>
+  <data name="DriverInstallButton" xml:space="preserve"><value>安装所选更新</value></data>
+  <data name="DriverCleanupButton" xml:space="preserve"><value>清理旧驱动</value></data>
+  <data name="DriverCleaningPrevious" xml:space="preserve"><value>正在确认新驱动已生效，并清理旧驱动…</value></data>
+  <data name="DriverPreviousCleaned" xml:space="preserve"><value>已清理 {0} 个旧驱动包，另有 {1} 项需重启后再清理。</value></data>
+  <data name="DriverCurrentVersion" xml:space="preserve"><value>当前版本</value></data>
+  <data name="DriverNewVersion" xml:space="preserve"><value>联想版本</value></data>
+  <data name="DriverCatalogHint" xml:space="preserve"><value>点击「检测更新」，从联想官方获取适用于本机（83JJ）的最新驱动。</value></data>
+  <data name="DriverCheckingCatalog" xml:space="preserve"><value>正在检测更新：从联想官方获取驱动列表，并与本机版本逐一比对…</value></data>
+  <data name="DriverCatalogResult" xml:space="preserve"><value>发现 {1} 项驱动更新（共比对 {0} 个驱动），选中后点击「安装所选更新」即可。</value></data>
+  <data name="DriverCatalogPartial" xml:space="preserve"><value>另有 {0} 个驱动暂时无法获取信息，可稍后重新检测。</value></data>
+  <data name="DriverInstalling" xml:space="preserve"><value>正在安装「{0}」（下载 → 校验 → 安装），请保持电脑开机并联网…</value></data>
+  <data name="DriverInstallConfirmed" xml:space="preserve"><value>安装完成，新驱动已生效。已清理 {0} 个旧驱动包，另有 {1} 个仍在使用，暂时保留。</value></data>
+  <data name="DriverRestartPending" xml:space="preserve"><value>安装完成，重启电脑后生效。重启后可点击「清理旧驱动」释放空间。</value></data>
+  <data name="DriverInstallUnverified" xml:space="preserve"><value>安装程序已结束，但暂未检测到新驱动生效，旧驱动已保留。可重启后重新检测确认。</value></data>
+  <data name="MenuSelectAll" xml:space="preserve"><value>全选</value></data>
   <data name="BtnNvidiaDrivers" xml:space="preserve"><value>NVIDIA 官方驱动页</value></data>
   <data name="BtnWindowsUpdate" xml:space="preserve"><value>Windows 更新</value></data>
   <data name="BtnOptionalUpdates" xml:space="preserve"><value>Windows 可选更新（驱动）</value></data>
@@ -158,7 +173,7 @@
   <data name="SubGraphics" xml:space="preserve"><value>显卡工作模式诊断。</value></data>
   <data name="SubSoftware" xml:space="preserve"><value>已安装应用、开机启动项与联想残留扫描（只读）。</value></data>
   <data name="SubFan" xml:space="preserve"><value>为每个档位编辑多通道风扇曲线草稿。</value></data>
-  <data name="SubDrivers" xml:space="preserve"><value>本机驱动清单、官方下载渠道与本地安装包校验。</value></data>
+  <data name="SubDrivers" xml:space="preserve"><value>检测和安装适用于本机的联想官方驱动。</value></data>
   <data name="SubCapabilities" xml:space="preserve"><value>每项功能在本机上的读写能力与待解决事项。</value></data>
   <data name="LblLiveState" xml:space="preserve"><value>实时状态</value></data>
   <data name="LblPowerParameters" xml:space="preserve"><value>功耗参数</value></data>
@@ -273,12 +288,12 @@
   <data name="CleanupScan" xml:space="preserve"><value>开始扫描</value></data>
   <data name="CleanupDeleteSelected" xml:space="preserve"><value>清理所选</value></data>
   <data name="CleanupMinSize" xml:space="preserve"><value>最小大小（MiB）</value></data>
-  <data name="CleanupSearchApps" xml:space="preserve"><value>搜索名称或发布者</value></data>
+  <data name="CleanupSearchApps" xml:space="preserve"><value>搜索软件名称或发布者</value></data>
   <data name="CleanupRefreshApps" xml:space="preserve"><value>刷新列表</value></data>
   <data name="CleanupUninstallSelected" xml:space="preserve"><value>卸载所选软件</value></data>
   <data name="CleanupScanLeftovers" xml:space="preserve"><value>检测卸载残留</value></data>
   <data name="CleanupAppType" xml:space="preserve"><value>类型</value></data>
-  <data name="CleanupBackToApps" xml:space="preserve"><value>返回软件列表</value></data>
+  <data name="CleanupCloseReview" xml:space="preserve"><value>关闭</value></data>
   <data name="CleanupTemporaryHint" xml:space="preserve"><value>扫描 C 盘系统临时文件、用户临时文件和 DirectX 缓存。扫描范围为两天前修改的文件。</value></data>
   <data name="CleanupLargeHint" xml:space="preserve"><value>按大小查找所选目录中的文件，默认扫描 C 盘。</value></data>
   <data name="CleanupDuplicateHint" xml:space="preserve"><value>按 SHA-256 检测所选目录中的重复文件。每组至少保留一份。</value></data>
@@ -295,7 +310,7 @@
   <data name="CleanupConfirmFiles" xml:space="preserve"><value>将所选的 {0:N0} 个文件移入回收站？每组重复文件须保留一份。</value></data>
   <data name="CleanupRemoving" xml:space="preserve"><value>正在清理所选项目…</value></data>
   <data name="CleanupLoadingApps" xml:space="preserve"><value>正在读取已安装软件…</value></data>
-  <data name="CleanupAppsFound" xml:space="preserve"><value>找到 {0:N0} 项软件，其中 {1:N0} 项支持直接卸载。</value></data>
+  <data name="CleanupAppsFound" xml:space="preserve"><value>找到 {0:N0} 项可卸载软件。</value></data>
   <data name="CleanupStoreError" xml:space="preserve"><value>已读取桌面软件。读取商店应用失败。{0}</value></data>
   <data name="CleanupConfirmUninstall" xml:space="preserve"><value>卸载「{0}」？Windows 或软件官方卸载程序可能弹出提示。</value></data>
   <data name="CleanupWaitingUninstall" xml:space="preserve"><value>正在等待「{0}」卸载完成…</value></data>
@@ -303,7 +318,8 @@
   <data name="CleanupUninstallPending" xml:space="preserve"><value>Windows 尚未确认卸载。请完成卸载，再检测残留。{0}</value></data>
   <data name="CleanupFindingResiduals" xml:space="preserve"><value>正在检测「{0}」的文件和注册表残留…</value></data>
   <data name="CleanupResidualsFound" xml:space="preserve"><value>为「{0}」找到 {1:N0} 项可能残留。请核对路径并勾选。</value></data>
-  <data name="CleanupConfirmResidual" xml:space="preserve"><value>清理「{0}」的所选 {1:N0} 项残留？文件移入回收站，注册表先备份再删除。</value></data>
+  <data name="CleanupResidualReviewHint" xml:space="preserve"><value>请核对勾选项。所选文件（含应用数据）将永久删除。注册表删除前会备份，空文件夹会一并移除。</value></data>
+  <data name="CleanupResidualLimit" xml:space="preserve"><value>已达到结果上限，处理后可继续扫描。</value></data>
   <data name="CleanupBatchDone" xml:space="preserve"><value>已处理 {0:N0} 项，跳过或失败 {1:N0} 项。</value></data>
   <data name="CleanupBackupLocation" xml:space="preserve"><value>注册表备份位于 {0}。</value></data>
   <data name="CleanupDuplicateGroup" xml:space="preserve"><value>第 {0} 组</value></data>
@@ -312,9 +328,9 @@
   <data name="CleanupEvidencePackageData" xml:space="preserve"><value>应用包专用数据目录</value></data>
   <data name="CleanupEvidenceRegisteredInstallationFolder" xml:space="preserve"><value>已登记的原安装目录</value></data>
   <data name="CleanupEvidenceExactProductFolder" xml:space="preserve"><value>与产品名称一致</value></data>
-  <data name="CleanupRemovable" xml:space="preserve"><value>可卸载</value></data>
-  <data name="CleanupUnavailable" xml:space="preserve"><value>不可直接卸载</value></data>
-  <data name="CleanupSelectItems" xml:space="preserve"><value>批量勾选</value></data>
+  <data name="CleanupEvidenceProductUpdateCache" xml:space="preserve"><value>产品更新缓存</value></data>
+  <data name="CleanupEvidenceInstallShortcut" xml:space="preserve"><value>快捷方式指向原安装目录</value></data>
+  <data name="CleanupEvidenceEmptyDirectory" xml:space="preserve"><value>应用空文件夹</value></data>
   <data name="CleanupConfirmStoreUninstall" xml:space="preserve"><value>从当前用户卸载 Microsoft Store？这会影响通过商店安装和更新应用，能否卸载由 Windows 决定。</value></data>
   <data name="LblLiveMonitor" xml:space="preserve"><value>实时监控</value></data>
   <data name="LblCpuFan" xml:space="preserve"><value>CPU 风扇</value></data>
@@ -420,4 +436,29 @@
   <data name="StartupSourceMachineRunRegistry" xml:space="preserve"><value>注册表（所有用户）</value></data>
   <data name="StartupSourceUserRunRegistry" xml:space="preserve"><value>注册表（当前用户）</value></data>
   <data name="StartupNonExecTarget" xml:space="preserve"><value>系统内置操作</value></data>
+  <data name="DriverCancelled" xml:space="preserve"><value>已取消，未做任何更改。</value></data>
+  <data name="DriverCleanupFailed" xml:space="preserve"><value>清理旧驱动失败（{0}）。</value></data>
+  <data name="DriverPreviousCleanedAll" xml:space="preserve"><value>已清理 {0} 个旧驱动包，旧驱动已全部清理完毕。</value></data>
+  <data name="DriverInstallFailed" xml:space="preserve"><value>安装未完成（{0}），驱动未做更改。</value></data>
+  <data name="DriverInstallConfirmedClean" xml:space="preserve"><value>安装完成，新驱动已生效，并已清理 {0} 个旧驱动包。</value></data>
+  <data name="DriverCatalogFailed" xml:space="preserve"><value>检测失败（{0}），请检查网络连接后重试。</value></data>
+  <data name="DriverCatalogUpToDate" xml:space="preserve"><value>所有驱动均已是最新版本（共比对 {0} 个驱动）。</value></data>
+  <data name="TipCopyDevice" xml:space="preserve"><value>复制设备名称</value></data>
+  <data name="LblPerformanceMode" xml:space="preserve"><value>性能模式</value></data>
+  <data name="EmptyDriversUpToDateHint" xml:space="preserve"><value>本机联想驱动均已是最新版本。</value></data>
+  <data name="EmptyDriversUpToDate" xml:space="preserve"><value>暂无可用更新</value></data>
+  <data name="EmptyDriversNotCheckedHint" xml:space="preserve"><value>点击右上角「检测更新」开始。</value></data>
+  <data name="EmptyDriversNotChecked" xml:space="preserve"><value>尚未检测</value></data>
+  <data name="MsgStartupSystemTaskConfirm" xml:space="preserve"><value>「{0}」是 Windows 自带的系统任务，关闭后可能影响系统更新、维护或部分功能。仍要关闭吗？</value></data>
+  <data name="StartupTasksHidden" xml:space="preserve"><value>已隐藏 {0} 个计划任务</value></data>
+  <data name="TipShowScheduledTasks" xml:space="preserve"><value>同时列出登录或开机时由任务计划程序运行的任务（大多是 Windows 自带的维护任务）。</value></data>
+  <data name="ShowScheduledTasks" xml:space="preserve"><value>显示计划任务</value></data>
+  <data name="EmptyNoAppsHint" xml:space="preserve"><value>换个关键词试试。</value></data>
+  <data name="EmptyNoApps" xml:space="preserve"><value>没有找到匹配的软件</value></data>
+  <data name="CleanupComponentsHidden" xml:space="preserve"><value>已隐藏 {0} 个组件</value></data>
+  <data name="TipShowComponents" xml:space="preserve"><value>同时列出运行库、解码器、扩展等组件。它们通常被系统或其他软件依赖，卸载前请确认。</value></data>
+  <data name="ShowComponents" xml:space="preserve"><value>显示组件与扩展</value></data>
+  <data name="AppTypeComponent" xml:space="preserve"><value>组件</value></data>
+  <data name="AppTypeStore" xml:space="preserve"><value>商店应用</value></data>
+  <data name="AppTypeDesktop" xml:space="preserve"><value>桌面应用</value></data>
 </root>

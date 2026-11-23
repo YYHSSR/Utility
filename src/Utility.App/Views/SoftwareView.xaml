@@ -3,28 +3,6 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:Utility.App.Localization"
              xmlns:ctl="clr-namespace:Utility.App.Controls">
-    <UserControl.Resources>
-        <!-- Residual (leftover) items table, shared layout with the cleanup page -->
-        <DataTemplate x:Key="ResidualItemsTable">
-            <DataGrid ItemsSource="{Binding}" CanUserAddRows="False">
-                <DataGrid.Columns>
-                    <DataGridTemplateColumn Header="{loc:Tr CleanupSelectColumn}" Width="60">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <CheckBox IsChecked="{Binding Selected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                          HorizontalAlignment="Center" VerticalAlignment="Center"
-                                          AutomationProperties.Name="{Binding Path}" />
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                    <DataGridTextColumn Header="{loc:Tr CleanupPathColumn}" Binding="{Binding Path}" Width="3*" />
-                    <DataGridTextColumn Header="{loc:Tr CleanupSizeColumn}" Binding="{Binding Size}" Width="90" />
-                    <DataGridTextColumn Header="{loc:Tr CleanupEvidenceColumn}" Binding="{Binding Evidence}" Width="1.4*" />
-                </DataGrid.Columns>
-            </DataGrid>
-        </DataTemplate>
-    </UserControl.Resources>
-
     <Grid Margin="0,0,8,6">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -47,8 +25,7 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <Border Style="{StaticResource TableCardStyle}" Margin="0"
-                            Visibility="{Binding IsAppPage, Converter={StaticResource BoolToVis}}">
+                    <Border Style="{StaticResource TableCardStyle}" Margin="0">
                         <DockPanel>
                             <DockPanel DockPanel.Dock="Top" Margin="10,10,10,8">
                                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
@@ -56,47 +33,85 @@
                                     <Button Content="{loc:Tr CleanupScanLeftovers}" Command="{Binding ScanResidualCommand}" Margin="0,0,8,0" />
                                     <Button Style="{StaticResource PrimaryButtonStyle}" Tag="&#xE74D;" Content="{loc:Tr CleanupUninstallSelected}" Command="{Binding UninstallCommand}" />
                                 </StackPanel>
-                                <Grid Width="280" HorizontalAlignment="Left">
-                                    <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}" Padding="32,6,8,6"
-                                             AutomationProperties.Name="{loc:Tr CleanupSearchApps}" ToolTip="{loc:Tr CleanupSearchApps}" />
-                                    <TextBlock Style="{StaticResource IconStyle}" FontSize="13" HorizontalAlignment="Left" Margin="11,0,0,0"
-                                               Foreground="{StaticResource TextTertiaryBrush}" Text="&#xE721;" IsHitTestVisible="False" />
-                                </Grid>
+                                <StackPanel Orientation="Horizontal">
+                                    <Grid Width="260">
+                                        <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}" Padding="32,6,8,6"
+                                                 AutomationProperties.Name="{loc:Tr CleanupSearchApps}" ToolTip="{loc:Tr CleanupSearchApps}" />
+                                        <TextBlock Style="{StaticResource IconStyle}" FontSize="13" HorizontalAlignment="Left" Margin="11,0,0,0"
+                                                   Foreground="{StaticResource TextTertiaryBrush}" Text="&#xE721;" IsHitTestVisible="False" />
+                                    </Grid>
+                                    <CheckBox Style="{StaticResource ToggleSwitchStyle}" Margin="18,0,0,0" VerticalAlignment="Center"
+                                              Content="{loc:Tr ShowComponents}" ToolTip="{loc:Tr TipShowComponents}"
+                                              IsChecked="{Binding ShowComponents, Mode=TwoWay}" />
+                                    <TextBlock Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource CaptionStyle}" Text="{Binding ComponentSummary}" />
+                                </StackPanel>
                             </DockPanel>
-                            <DataGrid ItemsSource="{Binding AppRows}" SelectedItem="{Binding SelectedApp}">
+                            <Grid>
+                            <DataGrid ItemsSource="{Binding AppRows}" SelectedItem="{Binding SelectedApp}"
+                                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
                                 <DataGrid.Columns>
                                     <!-- One click ticks or clears the app; ticked apps are uninstalled together. -->
                                     <DataGridTemplateColumn Header="{loc:Tr CleanupSelectColumn}" Width="60" SortMemberPath="Selected">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <CheckBox IsChecked="{Binding Selected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                          IsEnabled="{Binding Target.CanRemove}"
                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
                                                           AutomationProperties.Name="{Binding Name}" />
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTextColumn Header="{loc:Tr ColName}" Binding="{Binding Name}" Width="2.4*" />
+                                    <DataGridTemplateColumn Header="{loc:Tr ColName}" Width="2.4*" SortMemberPath="Name">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <DockPanel LastChildFill="True" VerticalAlignment="Center"
+                                                           Loaded="OnAppIconLoaded" DataContextChanged="OnAppIconContextChanged">
+                                                    <Grid Width="22" Height="22" Margin="0,0,8,0">
+                                                        <TextBlock Text="&#xECAA;" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock" BasedOn="{StaticResource IconStyle}">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                        <Image Source="{Binding Icon}" Width="20" Height="20" />
+                                                    </Grid>
+                                                    <TextBlock Text="{Binding Name}" ToolTip="{Binding Detail}" VerticalAlignment="Center"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                </DockPanel>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
                                     <DataGridTextColumn Header="{loc:Tr ColPublisher}" Binding="{Binding Publisher}" Width="1.4*" />
                                     <DataGridTextColumn Header="{loc:Tr ColVersion}" Binding="{Binding Version}" Width="*" />
-                                    <DataGridTextColumn Header="{loc:Tr CleanupAppType}" Binding="{Binding Type}" Width="95" />
-                                    <DataGridTextColumn Header="{loc:Tr ColState}" Binding="{Binding Removability}" Width="95" />
+                                    <DataGridTextColumn Header="{loc:Tr CleanupAppType}" Binding="{Binding Type}" Width="90" />
                                 </DataGrid.Columns>
                             </DataGrid>
-                        </DockPanel>
-                    </Border>
-
-                    <Border Style="{StaticResource TableCardStyle}" Margin="0"
-                            Visibility="{Binding IsResidualPage, Converter={StaticResource BoolToVis}}">
-                        <DockPanel>
-                            <WrapPanel DockPanel.Dock="Top" Margin="10,10,10,8">
-                                <Button Tag="&#xE72B;" Content="{loc:Tr CleanupBackToApps}" Command="{Binding ReturnToAppsCommand}" Margin="0,0,8,0" />
-                                <Button Content="{loc:Tr CleanupScanLeftovers}" Command="{Binding ScanResidualCommand}" Margin="0,0,8,0" />
-                                <Button Content="{loc:Tr CleanupSelectItems}" Command="{Binding SelectItemsCommand}" Margin="0,0,8,0" />
-                                <Button Style="{StaticResource PrimaryButtonStyle}" Content="{loc:Tr CleanupDeleteSelected}"
-                                        Command="{Binding RemoveResidualCommand}" />
-                            </WrapPanel>
-                            <ContentControl Content="{Binding ResidualRows}" ContentTemplate="{StaticResource ResidualItemsTable}" />
+                                <!-- Empty state: nothing matches the search (shown once the list has loaded) -->
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" IsHitTestVisible="False">
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding AppRows.Count}" Value="0" />
+                                                        <Condition Binding="{Binding IsBusy}" Value="False" />
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </MultiDataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <TextBlock Style="{StaticResource IconStyle}" FontSize="30" HorizontalAlignment="Center" Foreground="{StaticResource TextTertiaryBrush}" Text="&#xE721;" />
+                                    <TextBlock Margin="0,12,0,0" HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold" Text="{loc:Tr EmptyNoApps}" />
+                                    <TextBlock Margin="0,4,0,0" HorizontalAlignment="Center" Style="{StaticResource CaptionStyle}" Text="{loc:Tr EmptyNoAppsHint}" />
+                                </StackPanel>
+                            </Grid>
                         </DockPanel>
                     </Border>
 
@@ -108,9 +123,14 @@
             <TabItem Header="{loc:Tr TabStartupEntries}">
                 <Border Style="{StaticResource TableCardStyle}" Margin="0">
                     <DockPanel>
-                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="10,10,10,8">
-                            <Button Style="{StaticResource PrimaryButtonStyle}" Tag="&#xE8A7;" Content="{loc:Tr BtnOpenWindowsStartup}" Command="{Binding OpenWindowsStartupCommand}" />
-                        </StackPanel>
+                        <DockPanel DockPanel.Dock="Top" Margin="10,10,10,8">
+                            <Button DockPanel.Dock="Right" Tag="&#xE8A7;" Content="{loc:Tr BtnOpenWindowsStartup}" Command="{Binding OpenWindowsStartupCommand}" />
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <CheckBox Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center" Content="{loc:Tr ShowScheduledTasks}"
+                                          ToolTip="{loc:Tr TipShowScheduledTasks}" IsChecked="{Binding ShowScheduledTasks, Mode=TwoWay}" />
+                                <TextBlock Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource CaptionStyle}" Text="{Binding ScheduledTaskSummary}" />
+                            </StackPanel>
+                        </DockPanel>
                         <DataGrid ItemsSource="{Binding StartupEntries}">
                             <DataGrid.Columns>
                                 <DataGridTemplateColumn Header="{loc:Tr ColEnabled}" Width="80" SortMemberPath="IsEnabled">

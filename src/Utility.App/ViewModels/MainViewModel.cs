@@ -17,7 +17,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private readonly IBatteryProvider _battery;
     private readonly ITelemetryProvider _telemetry;
     private readonly ISoftwareInventoryProvider _software;
-    private readonly IDriverProvider _drivers;
     private readonly ILenovoHardwareControlProvider _hardware;
     private readonly HardwareWriteCoordinator _writeCoordinator;
     private readonly System.Windows.Threading.DispatcherTimer _telemetryTimer;
@@ -40,7 +39,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     // Background thermal reads that started before this moment may show the pre-switch profile,
     // so they are ignored to keep the dashboard and the tray on the state the last write verified.
     private DateTimeOffset _lastHardwareWriteUtc = DateTimeOffset.MinValue;
-    private IReadOnlyList<InstalledDriverEntry> _allDrivers = [];
 
     private string? _interruptedOpId;
     private bool _isWindowVisible = true;
@@ -119,16 +117,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private string _fanCaptureStatus = Loc.Get("FanCaptureReference");
     private string _fanLevelText = string.Empty;
 
-    // F7 Drivers
-    private DriverCategory _selectedDriverCategory = DriverCategory.All;
-
     public MainViewModel(
         JsonStateStore stateStore,
         ProfileValidationService validator,
         IBatteryProvider battery,
         ITelemetryProvider telemetry,
         ISoftwareInventoryProvider software,
-        IDriverProvider drivers,
         ILenovoHardwareControlProvider hardware,
         HardwareWriteCoordinator writeCoordinator)
     {
@@ -137,7 +131,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _battery = battery;
         _telemetry = telemetry;
         _software = software;
-        _drivers = drivers;
         _hardware = hardware;
         _writeCoordinator = writeCoordinator;
 
@@ -164,7 +157,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             if (e.PropertyName is nameof(QuickCleanupViewModel.IsCleaning) or nameof(QuickCleanupViewModel.IsDuplicateBusy))
                 QuickCleanupCommand.RaiseCanExecuteChanged();
         };
-        Cleanup.Completed += ReportQuickAction;
+        // The 垃圾清理 page shows its own results; toast only when that page is not open
+        // (the tray balloon still covers a hidden window).
+        Cleanup.Completed += summary =>
+        {
+            if (SelectedNavIndex != NavCleanup)
+                StatusMessage = summary;
+            QuickActionCompleted?.Invoke(summary);
+        };
         // Uninstall results surface in the auto-hiding toast.
         _uninstall = new Lazy<CleanupViewModel>(() =>
         {
@@ -210,21 +210,47 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         SaveFanCaptureCommand = new AsyncRelayCommand(
             () => RunSafelyAsync(SaveFanCaptureAsync), () => _liveFanCapture is not null);
 
-        OpenExternalDriverLinkCommand = new RelayCommand(p => { if (p is string url) _drivers.OpenExternalTarget(url); });
-
         _telemetryTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _telemetryTimer.Tick += (_, _) => SampleVisiblePage();
     }
 
     public ObservableCollection<ProfileFieldRow> ProfileFields { get; } = [];
     public ObservableCollection<DiskCapacityInfo> DiskCapacities { get; } = [];
+    private IReadOnlyList<StartupEntryRow> _allStartupEntries = [];
+    private bool _showScheduledTasks;
+
+    /// <summary>Rows shown on the startup tab: apps that start at sign-in, plus logon tasks when asked for.</summary>
     public IReadOnlyList<StartupEntryRow> StartupEntries { get; private set; } = [];
+
+    /// <summary>Also list scheduled tasks that run at sign-in/boot (mostly Windows' own maintenance tasks).</summary>
+    public bool ShowScheduledTasks
+    {
+        get => _showScheduledTasks;
+        set
+        {
+            if (SetField(ref _showScheduledTasks, value))
+                FilterStartupEntries();
+        }
+    }
+
+    /// <summary>"另有 N 个计划任务" hint next to the toggle (empty when shown or none).</summary>
+    public string ScheduledTaskSummary { get; private set; } = string.Empty;
+
+    private void FilterStartupEntries()
+    {
+        StartupEntries = _allStartupEntries
+            .Where(row => ShowScheduledTasks || row.Source != StartupEntrySource.ScheduledTask)
+            // Enabled first, then by name: what actually starts with Windows is on top.
+            .OrderByDescending(row => row.IsEnabled).ThenBy(row => row.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+        var hidden = _allStartupEntries.Count - StartupEntries.Count;
+        ScheduledTaskSummary = hidden > 0 ? Loc.Format("StartupTasksHidden", hidden) : string.Empty;
+        RaisePropertyChanged(nameof(StartupEntries));
+        RaisePropertyChanged(nameof(ScheduledTaskSummary));
+    }
     public ObservableCollection<FanChannelDraft> FanChannels { get; } = [];
     public IReadOnlyList<string> FanSpeedUnits { get; } = ["RPM", "%", "Level"];
-    public IReadOnlyList<InstalledDriverEntry> FilteredDrivers { get; private set; } = [];
-
-    public IReadOnlyList<DriverCategory> DriverCategories { get; } = Enum.GetValues<DriverCategory>();
-    public OfficialDriverLinks DriverLinks => OfficialDriverLinks.Default;
+    public LenovoDriverUpdatesViewModel DriverUpdates { get; } = new();
 
     // Page indices, in sidebar order. Keep in sync with the TabItems in MainWindow.xaml.
     public const int NavDashboard = 0;
@@ -276,7 +302,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public RelayCommand AddFanChannelCommand { get; }
     public AsyncRelayCommand SaveFanDraftCommand { get; }
     public AsyncRelayCommand SaveFanCaptureCommand { get; }
-    public RelayCommand OpenExternalDriverLinkCommand { get; }
 
     public int SelectedNavIndex
     {
@@ -397,19 +422,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public string FanValidationText { get => _fanValidationText; set => SetField(ref _fanValidationText, value); }
     public PointCollection FanPreviewPoints { get => _fanPreviewPoints; set => SetField(ref _fanPreviewPoints, value); }
 
-    public DriverCategory SelectedDriverCategory
-    {
-        get => _selectedDriverCategory;
-        set
-        {
-            if (SetField(ref _selectedDriverCategory, value))
-            {
-                ApplyDriverFilter();
-            }
-        }
-    }
-
-
     private Task? _initialization;
     public Task InitializeAsync() => _initialization ??= InitializeCoreAsync();
 
@@ -464,7 +476,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 await RunOnUiAsync(() => Uninstall.RefreshAppsCommand.Execute(null));
                 await RefreshSoftwareAsync();
             },
-            NavDrivers => RefreshDriversAsync,
             NavCleanup => Cleanup.LoadDrivesAsync,
             _ => null
         };
@@ -1247,14 +1258,20 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         var entries = await _software.ReadStartupEntriesAsync(_lifetime.Token).ConfigureAwait(false);
         await RunOnUiAsync(() =>
         {
-            StartupEntries = entries.Select(entry => new StartupEntryRow(entry, SetStartupEntryEnabledAsync)).ToList();
-            RaisePropertyChanged(nameof(StartupEntries));
+            _allStartupEntries = entries.Select(entry => new StartupEntryRow(entry, SetStartupEntryEnabledAsync)).ToList();
+            FilterStartupEntries();
         });
     }
 
     /// <summary>Applies a startup switch flip; returning false makes the row's switch snap back.</summary>
     private async Task<bool> SetStartupEntryEnabledAsync(StartupEntryRow row, bool enabled)
     {
+        // Windows' own tasks (Task Scheduler folder \Microsoft\…) keep the system healthy; ask before turning one off.
+        if (!enabled && row.IsSystemTask && MessageBox.Show(Application.Current.MainWindow,
+                Loc.Format("MsgStartupSystemTaskConfirm", row.Name), Loc.Get("TabStartupEntries"),
+                MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
+            return false;
+
         var result = await _software.SetStartupEntryEnabledAsync(row.Entry, enabled, _lifetime.Token);
         StatusMessage = result.Success
             ? Loc.Format(enabled ? "MsgStartupEnabled" : "MsgStartupDisabled", row.Name)
@@ -1433,23 +1450,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             SaveFanCaptureCommand.RaiseCanExecuteChanged();
             ApplyFanLevelsCommand.RaiseCanExecuteChanged();
         }
-    }
-
-    private async Task RefreshDriversAsync()
-    {
-        var list = await _drivers.ListDriversAsync(_lifetime.Token).ConfigureAwait(false);
-        await RunOnUiAsync(() =>
-        {
-            _allDrivers = list;
-            ApplyDriverFilter();
-        }).ConfigureAwait(false);
-    }
-
-    private void ApplyDriverFilter()
-    {
-        FilteredDrivers = SelectedDriverCategory == DriverCategory.All ? _allDrivers :
-            _allDrivers.Where(driver => driver.Category == SelectedDriverCategory).ToArray();
-        RaisePropertyChanged(nameof(FilteredDrivers));
     }
 
     private async Task DismissInterruptedAsync()

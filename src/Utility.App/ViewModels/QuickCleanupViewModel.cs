@@ -167,7 +167,7 @@ internal sealed class QuickCleanupViewModel : ViewModelBase, IDisposable
         }
     }
 
-    /// <summary>Automatic part: memory + temp/cache cleanup run together, then the duplicate scan.</summary>
+    /// <summary>Reclaim memory while one scan looks for both caches and duplicate files.</summary>
     public async Task RunAsync()
     {
         if (IsCleaning || IsDuplicateBusy)
@@ -180,7 +180,7 @@ internal sealed class QuickCleanupViewModel : ViewModelBase, IDisposable
         CacheText = Loc.Get("QcWorking");
         try
         {
-            await Task.WhenAll(CleanMemoryAsync(ct), CleanCacheAsync(ct));
+            await Task.WhenAll(CleanMemoryAsync(ct), ScanSystemDriveAsync(ct));
         }
         finally
         {
@@ -189,7 +189,6 @@ internal sealed class QuickCleanupViewModel : ViewModelBase, IDisposable
 
         if (!ct.IsCancellationRequested)
             Completed?.Invoke($"{Loc.Get("QcMemory")}：{MemoryText} {Loc.Get("QcCache")}：{CacheText}");
-        await GuardAsync(ScanDuplicatesAsync);
     }
 
     private async Task CleanMemoryAsync(CancellationToken ct)
@@ -209,17 +208,39 @@ internal sealed class QuickCleanupViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private async Task CleanCacheAsync(CancellationToken ct)
+    private async Task ScanSystemDriveAsync(CancellationToken ct)
+    {
+        IsDuplicateBusy = true;
+        try
+        {
+            var scan = await _disk.ScanSystemDriveAsync(DuplicateProgress(), ct);
+            await Task.WhenAll(CleanCacheAsync(scan.Temporary, ct), scan.Duplicate);
+            ApplyDuplicateScan(await scan.Duplicate);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            CacheText = Loc.Format("MsgActionFailed", ex.Message);
+            TempSummary = CacheText;
+            DuplicateSummary = CacheText;
+        }
+        finally
+        {
+            IsDuplicateBusy = false;
+        }
+    }
+
+    private async Task CleanCacheAsync(DiskScanResult scan, CancellationToken ct)
     {
         try
         {
-            var scan = await _disk.ScanAsync(DiskScanKind.Temporary, _disk.SystemDrivePath, 0, null, ct);
             var result = await _disk.RemoveAsync(DiskScanKind.Temporary, scan.Files, scan.Files, ct);
             var removed = result.Removed.ToHashSet(StringComparer.OrdinalIgnoreCase);
             var removedBytes = scan.Files.Where(file => removed.Contains(file.Path)).Sum(file => file.Bytes);
             var inUse = scan.Files.Count - removed.Count;
+            var removedLabel = Loc.Get("QcStatusRemoved");
+            var inUseLabel = Loc.Get("QcStatusInUse");
             TempRows = scan.Files
-                .Select(file => CleanupItemRow.WithNote(file, Loc.Get(removed.Contains(file.Path) ? "QcStatusRemoved" : "QcStatusInUse")))
+                .Select(file => CleanupItemRow.WithNote(file, removed.Contains(file.Path) ? removedLabel : inUseLabel))
                 .ToArray();
             CacheText = Loc.Format("QcCacheResult", removed.Count, CleanupViewModel.FormatSize(removedBytes));
             TempSummary = scan.Files.Count == 0
@@ -239,20 +260,29 @@ internal sealed class QuickCleanupViewModel : ViewModelBase, IDisposable
         IsDuplicateBusy = true;
         try
         {
-            DuplicateSummary = Loc.Format("QcScanning", 0);
-            var progress = new Progress<long>(count =>
-            {
-                if (IsDuplicateBusy)
-                    DuplicateSummary = Loc.Format("QcScanning", count);
-            });
-            var result = await _disk.ScanAsync(DiskScanKind.Duplicate, _disk.UserFolderPath, 0, progress, ct);
-            DuplicateRows = result.Files.Select(CleanupItemRow.ForDisk).ToArray();
-            UpdateDuplicateSummary();
+            var result = await _disk.ScanAsync(DiskScanKind.Duplicate, _disk.SystemDrivePath, 0, DuplicateProgress(), ct);
+            ApplyDuplicateScan(result);
         }
         finally
         {
             IsDuplicateBusy = false;
         }
+    }
+
+    private IProgress<long> DuplicateProgress()
+    {
+        DuplicateSummary = Loc.Format("QcScanning", 0);
+        return new Progress<long>(count =>
+        {
+            if (IsDuplicateBusy)
+                DuplicateSummary = Loc.Format("QcScanning", count);
+        });
+    }
+
+    private void ApplyDuplicateScan(DiskScanResult result)
+    {
+        DuplicateRows = result.Files.Select(CleanupItemRow.ForDisk).ToArray();
+        UpdateDuplicateSummary();
     }
 
     private void UpdateDuplicateSummary()
@@ -516,6 +546,7 @@ internal sealed class DriveScanViewModel : ViewModelBase
                     Summary = Loc.Format("QcScanning", count);
             });
             var result = await _disk.ScanAsync(DiskScanKind.Large, Root, QuickCleanupViewModel.LargeFileMinimumBytes, progress, scan.Token);
+            scan.Token.ThrowIfCancellationRequested();
             Rows = result.Files.Select(CleanupItemRow.ForDisk).ToArray();
             UpdateSummary();
         }
@@ -524,7 +555,8 @@ internal sealed class DriveScanViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Summary = Loc.Format("MsgActionFailed", ex.Message);
+            if (ReferenceEquals(_scan, scan) && !scan.IsCancellationRequested)
+                Summary = Loc.Format("MsgActionFailed", ex.Message);
         }
         finally
         {

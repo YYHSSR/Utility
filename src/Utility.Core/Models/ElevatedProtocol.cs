@@ -14,7 +14,9 @@ public enum ElevatedOperation
     SetFanSpeedLevels = 16,
     ListRestorePoints = 17,
     DeleteRestorePoints = 18,
-    SetStartupEntryEnabled = 19
+    SetStartupEntryEnabled = 19,
+    InstallLenovoDriver = 20,
+    CleanupLenovoDrivers = 21
 }
 
 /// <summary>One Windows System Restore point (rootdefault:SystemRestore).</summary>
@@ -41,6 +43,8 @@ public sealed record ElevatedRequest
     /// <summary>StableId of an existing startup entry (re-enumerated by the worker, never a raw path).</summary>
     public string? StartupEntryId { get; init; }
     public bool? StartupEnabled { get; init; }
+    public string? LenovoPackageId { get; init; }
+    public string? LenovoManifestHash { get; init; }
 }
 
 /// <summary>Typed IPC response returned by Utility.ElevatedWorker.</summary>
@@ -57,4 +61,6 @@ public sealed record ElevatedResponse
     public CoolingCycleResult? CoolingCycle { get; init; }
     public FirmwareSensorSample? FirmwareSensors { get; init; }
     public RestorePointList? RestorePoints { get; init; }
+    public LenovoDriverInstallResult? LenovoDriverInstall { get; init; }
+    public LenovoDriverCleanupResult? LenovoDriverCleanup { get; init; }
 }

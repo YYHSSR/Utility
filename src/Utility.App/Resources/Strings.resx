@@ -65,14 +65,29 @@
   <data name="TabStartupEntries" xml:space="preserve"><value>Startup Entries</value></data>
   <data name="TabLenovoLeftovers" xml:space="preserve"><value>Lenovo Leftover Scan (Read-Only)</value></data>
   <data name="BtnOpenWindowsApps" xml:space="preserve"><value>Open Windows Installed Apps</value></data>
-  <data name="BtnOpenWindowsStartup" xml:space="preserve"><value>Open Windows Startup Apps</value></data>
+  <data name="BtnOpenWindowsStartup" xml:space="preserve"><value>Windows startup settings</value></data>
   <data name="BtnScanLeftovers" xml:space="preserve"><value>Run Read-Only Leftover Scan</value></data>
   <data name="FanHeader" xml:space="preserve"><value>Custom Fan Curves</value></data>
   <data name="BtnReadFanTable" xml:space="preserve"><value>Read Firmware Fan Table (Elevated)</value></data>
   <data name="BtnApplyFanCurve" xml:space="preserve"><value>Apply Fan Curve</value></data>
   <data name="BtnRestoreFanDefault" xml:space="preserve"><value>Restore Default Policy</value></data>
   <data name="DriversHeader" xml:space="preserve"><value>Official Drivers</value></data>
-  <data name="BtnLenovoDrivers" xml:space="preserve"><value>Lenovo 83JJ drivers</value></data>
+  <data name="DriverCheckButton" xml:space="preserve"><value>Check for updates</value></data>
+  <data name="DriverInstallButton" xml:space="preserve"><value>Install selected update</value></data>
+  <data name="DriverCleanupButton" xml:space="preserve"><value>Clean previous drivers</value></data>
+  <data name="DriverCleaningPrevious" xml:space="preserve"><value>Making sure the new drivers are active, then removing the old ones…</value></data>
+  <data name="DriverPreviousCleaned" xml:space="preserve"><value>Removed {0} old driver packages; {1} can be removed after a restart.</value></data>
+  <data name="DriverCurrentVersion" xml:space="preserve"><value>Current version</value></data>
+  <data name="DriverNewVersion" xml:space="preserve"><value>Lenovo version</value></data>
+  <data name="DriverCatalogHint" xml:space="preserve"><value>Click "Check for updates" to look for official Lenovo drivers for this PC (83JJ).</value></data>
+  <data name="DriverCheckingCatalog" xml:space="preserve"><value>Checking for updates: fetching the Lenovo driver list and comparing it with this PC…</value></data>
+  <data name="DriverCatalogResult" xml:space="preserve"><value>Found {1} driver updates (checked {0} drivers). Select one and click "Install selected update".</value></data>
+  <data name="DriverCatalogPartial" xml:space="preserve"><value>{0} more could not be checked; try again later.</value></data>
+  <data name="DriverInstalling" xml:space="preserve"><value>Installing "{0}" (download, verify, install). Keep the PC on and connected…</value></data>
+  <data name="DriverInstallConfirmed" xml:space="preserve"><value>Installed. The new driver is active; removed {0} old packages and kept {1} still in use.</value></data>
+  <data name="DriverRestartPending" xml:space="preserve"><value>Installed. Restart the PC to finish; afterwards click "Remove old drivers" to free space.</value></data>
+  <data name="DriverInstallUnverified" xml:space="preserve"><value>The installer finished, but the new driver is not active yet, so the old one was kept. Restart and check again to confirm.</value></data>
+  <data name="MenuSelectAll" xml:space="preserve"><value>Select all</value></data>
   <data name="BtnNvidiaDrivers" xml:space="preserve"><value>NVIDIA Official Drivers</value></data>
   <data name="BtnWindowsUpdate" xml:space="preserve"><value>Windows Update</value></data>
   <data name="BtnOptionalUpdates" xml:space="preserve"><value>Windows Optional Updates</value></data>
@@ -158,7 +173,7 @@
   <data name="SubGraphics" xml:space="preserve"><value>Graphics mode diagnostics.</value></data>
   <data name="SubSoftware" xml:space="preserve"><value>Installed apps, startup entries and a read-only Lenovo leftover scan.</value></data>
   <data name="SubFan" xml:space="preserve"><value>Edit multi-channel fan curve drafts for each profile.</value></data>
-  <data name="SubDrivers" xml:space="preserve"><value>Installed drivers, official download routes and local package checks.</value></data>
+  <data name="SubDrivers" xml:space="preserve"><value>Find and install official Lenovo drivers for this device.</value></data>
   <data name="SubCapabilities" xml:space="preserve"><value>Read/write capability of each feature on this device and open items.</value></data>
   <data name="LblLiveState" xml:space="preserve"><value>Live state</value></data>
   <data name="LblPowerParameters" xml:space="preserve"><value>Power parameters</value></data>
@@ -273,12 +288,12 @@
   <data name="CleanupScan" xml:space="preserve"><value>Scan</value></data>
   <data name="CleanupDeleteSelected" xml:space="preserve"><value>Clean selected</value></data>
   <data name="CleanupMinSize" xml:space="preserve"><value>Minimum (MiB)</value></data>
-  <data name="CleanupSearchApps" xml:space="preserve"><value>Search name or publisher</value></data>
+  <data name="CleanupSearchApps" xml:space="preserve"><value>Search by name or publisher</value></data>
   <data name="CleanupRefreshApps" xml:space="preserve"><value>Refresh</value></data>
   <data name="CleanupUninstallSelected" xml:space="preserve"><value>Uninstall selected app</value></data>
   <data name="CleanupScanLeftovers" xml:space="preserve"><value>Scan uninstall leftovers</value></data>
   <data name="CleanupAppType" xml:space="preserve"><value>Type</value></data>
-  <data name="CleanupBackToApps" xml:space="preserve"><value>Back to apps</value></data>
+  <data name="CleanupCloseReview" xml:space="preserve"><value>Close</value></data>
   <data name="CleanupTemporaryHint" xml:space="preserve"><value>Scan Windows and user temporary files and the DirectX cache on the system drive. Files modified in the last two days are kept.</value></data>
   <data name="CleanupLargeHint" xml:space="preserve"><value>Find files by size in the selected folder. The system drive is selected by default.</value></data>
   <data name="CleanupDuplicateHint" xml:space="preserve"><value>Find byte-identical files under the selected folder using SHA-256. Leave one copy in each group.</value></data>
@@ -295,7 +310,7 @@
   <data name="CleanupConfirmFiles" xml:space="preserve"><value>Move {0:N0} selected files to the Recycle Bin? Each duplicate group must retain a copy.</value></data>
   <data name="CleanupRemoving" xml:space="preserve"><value>Cleaning selected items…</value></data>
   <data name="CleanupLoadingApps" xml:space="preserve"><value>Reading the installed app inventory…</value></data>
-  <data name="CleanupAppsFound" xml:space="preserve"><value>{0:N0} apps found · {1:N0} can be uninstalled here.</value></data>
+  <data name="CleanupAppsFound" xml:space="preserve"><value>{0:N0} apps can be uninstalled here.</value></data>
   <data name="CleanupStoreError" xml:space="preserve"><value>Desktop inventory loaded. Store package list could not be read. {0}</value></data>
   <data name="CleanupConfirmUninstall" xml:space="preserve"><value>Uninstall {0}? Windows or the vendor uninstaller may show a dialog.</value></data>
   <data name="CleanupWaitingUninstall" xml:space="preserve"><value>Waiting for the {0} uninstaller…</value></data>
@@ -303,7 +318,8 @@
   <data name="CleanupUninstallPending" xml:space="preserve"><value>Windows has not confirmed removal. Finish the uninstaller, then scan leftovers. {0}</value></data>
   <data name="CleanupFindingResiduals" xml:space="preserve"><value>Scanning files and registry locations for {0}…</value></data>
   <data name="CleanupResidualsFound" xml:space="preserve"><value>{1:N0} possible leftovers for {0}. Review the paths and select the items to clean.</value></data>
-  <data name="CleanupConfirmResidual" xml:space="preserve"><value>Clean {1:N0} selected leftovers for {0}? Files go to the Recycle Bin. Registry entries are backed up before deletion.</value></data>
+  <data name="CleanupResidualReviewHint" xml:space="preserve"><value>Review the selection. Selected files, including app data, will be permanently deleted. Registry entries are backed up. Empty folders are removed.</value></data>
+  <data name="CleanupResidualLimit" xml:space="preserve"><value>The result limit was reached. You can scan again after cleaning.</value></data>
   <data name="CleanupBatchDone" xml:space="preserve"><value>Removed {0:N0} items. {1:N0} skipped or failed.</value></data>
   <data name="CleanupBackupLocation" xml:space="preserve"><value>Registry backups are in {0}.</value></data>
   <data name="CleanupDuplicateGroup" xml:space="preserve"><value>Group {0}</value></data>
@@ -312,9 +328,9 @@
   <data name="CleanupEvidencePackageData" xml:space="preserve"><value>Exact package family</value></data>
   <data name="CleanupEvidenceRegisteredInstallationFolder" xml:space="preserve"><value>Registered install folder</value></data>
   <data name="CleanupEvidenceExactProductFolder" xml:space="preserve"><value>Exact product folder</value></data>
-  <data name="CleanupRemovable" xml:space="preserve"><value>Removable</value></data>
-  <data name="CleanupUnavailable" xml:space="preserve"><value>Unavailable</value></data>
-  <data name="CleanupSelectItems" xml:space="preserve"><value>Select items</value></data>
+  <data name="CleanupEvidenceProductUpdateCache" xml:space="preserve"><value>App update cache</value></data>
+  <data name="CleanupEvidenceInstallShortcut" xml:space="preserve"><value>Shortcut targets the original installation</value></data>
+  <data name="CleanupEvidenceEmptyDirectory" xml:space="preserve"><value>Empty app folder</value></data>
   <data name="CleanupConfirmStoreUninstall" xml:space="preserve"><value>Remove Microsoft Store from the current user? This affects installing and updating apps through the Store. Windows decides whether removal is available.</value></data>
   <data name="LblLiveMonitor" xml:space="preserve"><value>Live monitor</value></data>
   <data name="LblCpuFan" xml:space="preserve"><value>CPU fan</value></data>
@@ -420,4 +436,29 @@
   <data name="StartupSourceMachineRunRegistry" xml:space="preserve"><value>Registry (all users)</value></data>
   <data name="StartupSourceUserRunRegistry" xml:space="preserve"><value>Registry (current user)</value></data>
   <data name="StartupNonExecTarget" xml:space="preserve"><value>Built-in system action</value></data>
+  <data name="DriverCancelled" xml:space="preserve"><value>Cancelled. Nothing was changed.</value></data>
+  <data name="DriverCleanupFailed" xml:space="preserve"><value>Could not remove old drivers ({0}).</value></data>
+  <data name="DriverPreviousCleanedAll" xml:space="preserve"><value>Removed {0} old driver packages. All old drivers are cleaned up.</value></data>
+  <data name="DriverInstallFailed" xml:space="preserve"><value>Installation did not complete ({0}). Nothing was changed.</value></data>
+  <data name="DriverInstallConfirmedClean" xml:space="preserve"><value>Installed. The new driver is active; removed {0} old packages.</value></data>
+  <data name="DriverCatalogFailed" xml:space="preserve"><value>Could not check for updates ({0}). Check your network and try again.</value></data>
+  <data name="DriverCatalogUpToDate" xml:space="preserve"><value>All drivers are up to date (checked {0} drivers).</value></data>
+  <data name="TipCopyDevice" xml:space="preserve"><value>Copy device name</value></data>
+  <data name="LblPerformanceMode" xml:space="preserve"><value>Performance mode</value></data>
+  <data name="EmptyDriversUpToDateHint" xml:space="preserve"><value>Your Lenovo drivers are up to date.</value></data>
+  <data name="EmptyDriversUpToDate" xml:space="preserve"><value>No updates available</value></data>
+  <data name="EmptyDriversNotCheckedHint" xml:space="preserve"><value>Click "Check for updates" at the top right.</value></data>
+  <data name="EmptyDriversNotChecked" xml:space="preserve"><value>Not checked yet</value></data>
+  <data name="MsgStartupSystemTaskConfirm" xml:space="preserve"><value>"{0}" is a Windows system task. Turning it off may affect updates, maintenance or some features. Turn it off anyway?</value></data>
+  <data name="StartupTasksHidden" xml:space="preserve"><value>{0} scheduled tasks hidden</value></data>
+  <data name="TipShowScheduledTasks" xml:space="preserve"><value>Also list tasks that Task Scheduler runs at sign-in or start-up (mostly Windows maintenance).</value></data>
+  <data name="ShowScheduledTasks" xml:space="preserve"><value>Show scheduled tasks</value></data>
+  <data name="EmptyNoAppsHint" xml:space="preserve"><value>Try another keyword.</value></data>
+  <data name="EmptyNoApps" xml:space="preserve"><value>No matching software</value></data>
+  <data name="CleanupComponentsHidden" xml:space="preserve"><value>{0} components hidden</value></data>
+  <data name="TipShowComponents" xml:space="preserve"><value>Also list runtimes, codecs, extensions and other parts that other apps or Windows rely on.</value></data>
+  <data name="ShowComponents" xml:space="preserve"><value>Show components</value></data>
+  <data name="AppTypeComponent" xml:space="preserve"><value>Component</value></data>
+  <data name="AppTypeStore" xml:space="preserve"><value>Store app</value></data>
+  <data name="AppTypeDesktop" xml:space="preserve"><value>Desktop app</value></data>
 </root>

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Management;
 using Utility.Core.Models;
 using Utility.Core.Services;
@@ -7,7 +6,7 @@ using Utility.Platform.Native;
 namespace Utility.Platform.Providers;
 
 /// <summary>
-/// Reads installed PnP signed drivers, inspects local files, and opens official installation routes.
+/// Reads installed PnP signed drivers and inspects local package files.
 /// </summary>
 public sealed class WindowsDriverProvider : IDriverProvider
 {
@@ -68,20 +67,7 @@ public sealed class WindowsDriverProvider : IDriverProvider
     public Task<DriverPackageInspection> InspectLocalPackageAsync(string filePath, CancellationToken ct = default) =>
         Task.Run(() => WinTrustInterop.InspectLocalFile(filePath), ct);
 
-    public bool OpenExternalTarget(string urlOrSettingsUri)
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo { FileName = urlOrSettingsUri, UseShellExecute = true });
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static DriverCategory ClassifyDriver(string deviceName, string provider, string deviceClass)
+    internal static DriverCategory ClassifyDriver(string deviceName, string provider, string deviceClass)
     {
         var text = $"{deviceName} {provider} {deviceClass}";
         if (deviceName.Contains("Lenovo", StringComparison.OrdinalIgnoreCase) ||

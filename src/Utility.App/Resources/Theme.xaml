@@ -251,6 +251,18 @@
          Navigation
          Tag = icon glyph
          ============================================================ -->
+    <!-- Keyboard focus ring (only drawn for Tab/arrow-key focus, never for mouse clicks) -->
+    <Style x:Key="KeyboardFocusVisual">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Rectangle Margin="-3" RadiusX="9" RadiusY="9" Stroke="{StaticResource AccentBrush}" StrokeThickness="2"
+                               Opacity="0.85" SnapsToDevicePixels="True" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="NavButtonStyle" TargetType="RadioButton">
         <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
         <Setter Property="Background" Value="Transparent" />
@@ -258,7 +270,7 @@
         <Setter Property="Margin" Value="0,2" />
         <Setter Property="FontSize" Value="13.5" />
         <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisual}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
@@ -327,7 +339,7 @@
         <Setter Property="Padding" Value="16,7" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisual}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
@@ -389,7 +401,7 @@
         <Setter Property="Padding" Value="14,7" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisual}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -594,7 +606,7 @@
     <Style x:Key="ToggleSwitchStyle" TargetType="CheckBox">
         <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
         <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisual}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="CheckBox">
@@ -716,7 +728,7 @@
         <Setter Property="BorderBrush" Value="{StaticResource BorderStrongBrush}" />
         <Setter Property="Height" Value="32" />
         <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisual}" />
         <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
@@ -901,7 +913,7 @@
     <Style x:Key="PillTabItemStyle" TargetType="TabItem">
         <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
         <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisual}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TabItem">
@@ -1008,6 +1020,109 @@
     <!-- Every ScrollViewer (pages, tables, lists) gets eased wheel scrolling; see Controls/SmoothScroll.cs -->
     <Style TargetType="ScrollViewer">
         <Setter Property="ctl:SmoothScroll.IsEnabled" Value="True" />
+    </Style>
+
+    <!-- Small square icon button (Content = glyph). Fades in only while its card (nearest Border ancestor) is hovered,
+         while focused, or while Tag="copied" shows the success check. -->
+    <Style x:Key="IconButtonStyle" TargetType="Button">
+        <Setter Property="Width" Value="28" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisual}" />
+        <Setter Property="Foreground" Value="{StaticResource TextTertiaryBrush}" />
+        <Setter Property="Opacity" Value="0" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bg" CornerRadius="7" Background="Transparent" RenderTransformOrigin="0.5,0.5">
+                        <TextBlock x:Name="Glyph" Style="{StaticResource IconStyle}" FontSize="13" Text="{TemplateBinding Content}"
+                                   Foreground="{TemplateBinding Foreground}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource AccentSoftBrush}" />
+                            <Setter TargetName="Glyph" Property="Foreground" Value="{StaticResource AccentBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bg" Property="RenderTransform">
+                                <Setter.Value><ScaleTransform ScaleX="0.9" ScaleY="0.9" /></Setter.Value>
+                            </Setter>
+                        </Trigger>
+                        <Trigger Property="Tag" Value="copied">
+                            <Setter TargetName="Glyph" Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                            <Setter TargetName="Bg" Property="Background" Value="Transparent" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <MultiDataTrigger>
+                <MultiDataTrigger.Conditions>
+                    <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Border}}" Value="False" />
+                    <Condition Binding="{Binding IsKeyboardFocused, RelativeSource={RelativeSource Self}}" Value="False" />
+                    <Condition Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="{x:Null}" />
+                </MultiDataTrigger.Conditions>
+                <MultiDataTrigger.EnterActions>
+                    <BeginStoryboard>
+                        <Storyboard><DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.2" EasingFunction="{StaticResource EaseOut}" /></Storyboard>
+                    </BeginStoryboard>
+                </MultiDataTrigger.EnterActions>
+                <MultiDataTrigger.ExitActions>
+                    <BeginStoryboard>
+                        <Storyboard><DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.08" /></Storyboard>
+                    </BeginStoryboard>
+                </MultiDataTrigger.ExitActions>
+            </MultiDataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Right-click menus (copy etc.): white rounded card matching the app instead of the classic Windows menu -->
+    <Style TargetType="ContextMenu">
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContextMenu">
+                    <Border Margin="0,0,10,12" Padding="4" MinWidth="140" CornerRadius="9" Background="White"
+                            BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="14" ShadowDepth="3" Direction="270" Opacity="0.14" Color="#1B2130" />
+                        </Border.Effect>
+                        <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="MenuItem">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                    <Border x:Name="Bg" CornerRadius="6" Padding="10,6" Background="Transparent">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Right" Margin="24,0,0,0" FontSize="12" Foreground="{StaticResource TextTertiaryBrush}"
+                                       Text="{TemplateBinding InputGestureText}" VerticalAlignment="Center" />
+                            <ContentPresenter ContentSource="Header" VerticalAlignment="Center" RecognizesAccessKey="True" />
+                        </DockPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource AccentSoftBrush}" />
+                            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource TextTertiaryBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- Right-click copy for tables (copies the selected rows, tab-separated) -->

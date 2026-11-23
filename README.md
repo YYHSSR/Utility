@@ -12,7 +12,7 @@ C# · WPF · .NET 10 · 无后台服务 · 无内核驱动 · 按需提权</p>
 [![Platform](https://img.shields.io/badge/platform-Windows%2011%20x64-0078D4?style=flat-square&logo=windows11&logoColor=white)](https://github.com/YYHSSR/Utility)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![WPF](https://img.shields.io/badge/UI-WPF-68217A?style=flat-square)](https://github.com/YYHSSR/Utility)
-[![Version](https://img.shields.io/badge/version-0.4.8-2EA043?style=flat-square)](https://github.com/YYHSSR/Utility)
+[![Version](https://img.shields.io/badge/version-0.6.1-2EA043?style=flat-square)](https://github.com/YYHSSR/Utility)
 [![License](https://img.shields.io/badge/license-Non--Commercial%20%7C%20ShareAlike-8B5CF6?style=flat-square)](LICENSE)
 
 [功能](#功能) · [快速开始](#快速开始) · [安全设计](#安全设计) · [构建](#构建与测试) · [许可证](#许可证) · [贡献者](CONTRIBUTORS.md)
@@ -39,8 +39,8 @@ Utility 是个人项目，与 Lenovo / 联想、NVIDIA 无隶属或背书关系�
 |:---|:---|
 | **📊 系统概述**<br><br>CPU、GPU、内存、磁盘、电池实时读数，近 2 分钟负载趋势；一键刷新全部状态。插电时可执行最长 30 秒的降温除尘，温度达标自动恢复原风扇控制。 | **⚡ 性能配置**<br><br>日常 / 游戏双档功耗预设。只写入两档之间有差异的字段，先降后升；写入后整表回读核验，失败自动回滚并保留操作日志。 |
 | **🌀 自定义风扇**<br><br>读取 10 级固件风扇表，按通道编辑曲线并做几何校验；应用前需完成实机捕获，支持恢复固件默认值。 | **🔋 电池与显卡**<br><br>设计容量、满充容量、健康度、循环次数；联想养护模式读写与回读；独显 / 混合 / 集显路由切换，操作前需确认重启恢复路径。 |
-| **🧹 垃圾清理**<br><br>一键回收闲置内存、清理两天前的临时缓存；SHA-256 重复文件、大文件、系统还原点；软件卸载与残留扫描。残留文件移入回收站，注册表删除前备份。 | **📦 软件与启动项**<br><br>枚举 Win32 与当前用户 AppX 应用，查看注册表 / 启动文件夹 / 计划任务启动项；联想残留扫描为只读，结果逐项列出。 |
-| **🛡️ 官方驱动**<br><br>按类别整理已安装 PnP 驱动，直达联想 83JJ、NVIDIA 与 Windows Update 官方页面。本地 `.exe` 安装包需通过 Authenticode、SHA-256、厂商、架构与 BIOS 排除检查。 | **🧪 原生与可诊断**<br><br>WPF 中文界面、高 DPI、托盘常驻；`--diagnostics-export` 可导出只读的本机能力与遥测快照，方便排查问题。 |
+| **🧹 垃圾清理**<br><br>一键回收闲置内存、清理两天前的临时缓存；查找重复文件和大文件，管理系统还原点。 | **📦 软件与启动项**<br><br>查看可卸载的 Win32 与 AppX 应用及启动项。卸载后扫描文件和注册表，所选残留文件永久删除，注册表删除前备份。 |
+| **🛡️ 官方驱动**<br><br>对照联想 83JJ 官方目录检查更新，按硬件 ID、Windows 版本和驱动版本筛选，校验 SHA-256 与 Authenticode 后在本机安装。 | **🧪 原生与可诊断**<br><br>WPF 中文界面、高 DPI、托盘常驻；`--diagnostics-export` 可导出只读的本机能力与遥测快照，方便排查问题。 |
 
 ### 页面地图
 
@@ -103,7 +103,7 @@ dotnet publish .\src\Utility.App\Utility.App.csproj `
 |:---|:---|
 | Lenovo Legion Y7000 IRX9（`83JJ`）/ BIOS `PTCN18WW` / Windows 11 x64 | ✅ 厂商写入功能的验证目标 |
 | 其他 Lenovo Legion 机型 | ⚠️ 通用只读功能可用；厂商写入受目标校验限制，未验证 |
-| 非 Lenovo 设备 | ⚠️ 清理、软件、驱动等通用功能可用；Lenovo 专属功能不可用 |
+| 非 Lenovo 设备 | 清理、软件管理等通用功能可用 |
 | Windows 10 / ARM64 / 32 位 | ❓ 未验证；项目仅发布 `win-x64` |
 
 > 硬件写入不是“能读到就一定能安全写入”。未在目标机型与 BIOS 上验证的写入路径会被拒绝，这是有意设计，不是功能缺失。
@@ -116,8 +116,8 @@ dotnet publish .\src\Utility.App\Utility.App.csproj `
 | **受限提权通道** | ACL 限制的命名管道、双方进程 ID 校验、一次性 token，并排除网络客户端。 |
 | **写入可逆** | 先读原值，只写差异字段，完成后整表回读；失败回滚，中断操作通过 journal 在下次启动时提示恢复。 |
 | **目标锁定** | 性能、风扇、显卡与养护模式写入仅对 `83JJ` + `PTCN18WW` 开放，避免误刷其他机型。 |
-| **安装克制** | 不静默安装驱动。本地安装包需通过 Authenticode、SHA-256、厂商、架构与 BIOS 排除检查，并由你二次确认后启动。 |
-| **清理可恢复** | 卸载残留文件移入回收站，注册表删除前备份；删除系统还原点需要二次确认。 |
+| **驱动更新** | 点击安装后请求管理员权限。新驱动生效并确认旧包已脱离设备后，使用 Windows 工具清除旧包。 |
+| **清理确认** | 卸载残留窗口列出待清理项目。点击清理后永久删除所选文件，注册表删除前备份。 |
 | **测试隔离** | xUnit 测试使用模拟硬件提供者，自动化测试不会写入真实硬件。 |
 | **无后台组件** | 不安装 Windows 服务或内核驱动；托盘常驻，可从托盘菜单完全退出。 |
 
@@ -188,7 +188,7 @@ dotnet publish .\src\Utility.App\Utility.App.csproj `
 
 - 设置、日志和操作记录位于 `%LOCALAPPDATA%\Utility\`。
 - 退出 Utility 后，删除程序目录和上述数据目录即可完成清理。
-- 项目不包含账号系统或自建遥测，不会主动上传硬件数据。打开官方驱动页面时会使用默认浏览器。
+- 项目不包含账号系统或自建遥测。驱动检测使用公开的联想型号目录，硬件 ID 和版本比对在本机完成。
 
 ## 常见问题
 

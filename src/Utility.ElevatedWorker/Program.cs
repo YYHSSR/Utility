@@ -99,6 +99,10 @@ internal static class Program
             }
             else
             {
+                if (request.Operation == ElevatedOperation.InstallLenovoDriver)
+                    timeout.CancelAfter(TimeSpan.FromMinutes(40));
+                if (request.Operation == ElevatedOperation.CleanupLenovoDrivers)
+                    timeout.CancelAfter(TimeSpan.FromSeconds(55));
                 response = await HandleAsync(request, timeout.Token).ConfigureAwait(false);
             }
             using var writer = new StreamWriter(pipe, new UTF8Encoding(false), leaveOpen: true);
@@ -216,6 +220,15 @@ internal static class Program
                 case ElevatedOperation.SetStartupEntryEnabled when request.StartupEnabled is bool startupEnabled:
                     var toggled = WindowsSoftwareProvider.SetStartupEntryEnabledDirect(request.StartupEntryId, startupEnabled);
                     return new ElevatedResponse { Success = toggled.Success, ErrorCode = toggled.ErrorCode, Message = toggled.Message };
+
+                case ElevatedOperation.InstallLenovoDriver when request.LenovoPackageId is { } id &&
+                                                               request.LenovoManifestHash is { } manifestHash:
+                    var installation = await new LenovoDriverUpdates().InstallInWorkerAsync(id, manifestHash, ct).ConfigureAwait(false);
+                    return new ElevatedResponse { Success = true, LenovoDriverInstall = installation };
+
+                case ElevatedOperation.CleanupLenovoDrivers:
+                    var cleanup = await LenovoDriverUpdates.CleanupPreviousDriversInWorkerAsync(ct).ConfigureAwait(false);
+                    return new ElevatedResponse { Success = true, LenovoDriverCleanup = cleanup };
 
                 default:
                     return new ElevatedResponse { ErrorCode = "UNKNOWN_OPERATION", Message = "Unknown Utility operation." };

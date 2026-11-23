@@ -54,6 +54,9 @@ public sealed class StartupEntryRow : ViewModelBase
     public StartupEntry Entry { get; }
     public string Name => Entry.Name;
     public StartupEntrySource Source => Entry.Source;
+    /// <summary>A scheduled task that belongs to Windows itself (Task Scheduler folder \Microsoft\…).</summary>
+    public bool IsSystemTask => Entry.Source == StartupEntrySource.ScheduledTask &&
+        Entry.Location.StartsWith(@"\Microsoft\", StringComparison.OrdinalIgnoreCase);
     /// <summary>Program path; built-in task actions (COM handlers etc.) get a readable label instead.</summary>
     public string CommandOrTarget => Entry.CommandOrTarget == "(non-exec action)"
         ? Utility.App.Localization.Loc.Get("StartupNonExecTarget")

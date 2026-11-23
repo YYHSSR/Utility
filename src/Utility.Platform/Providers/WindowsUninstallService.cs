@@ -9,7 +9,16 @@ using Utility.Core.Models;
 namespace Utility.Platform.Providers;
 
 public sealed record UninstallTarget(
-    InstalledAppEntry App, bool CanRemove, string? PackageName = null, string? PackageFullName = null);
+    InstalledAppEntry App, bool CanRemove, string? PackageName = null, string? PackageFullName = null,
+    string? PackageInstallLocation = null, string? PackageAppId = null)
+{
+    /// <summary>Name to show (Start menu / manifest name for Store apps). Display only: matching uses App.DisplayName.</summary>
+    public string? FriendlyName { get; init; }
+    /// <summary>Publisher to show (manifest PublisherDisplayName, or the CN of the signing subject).</summary>
+    public string? FriendlyPublisher { get; init; }
+    /// <summary>Runtime, redistributable, codec/extension or other component rather than an app people launch.</summary>
+    public bool IsComponent { get; init; }
+}
 
 public sealed record UninstallInventory(IReadOnlyList<UninstallTarget> Apps, string? StoreError);
 
@@ -20,7 +29,19 @@ public sealed partial class WindowsUninstallService
     internal const string UninstallKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
 
     private sealed record AppxEntry(string Name, string PackageFullName, string PackageFamilyName,
-        string? Publisher, string? Version, bool NonRemovable, bool IsBundle);
+        string? Publisher, string? Version, bool NonRemovable, bool IsBundle, string? InstallLocation, string? AppId,
+        string? StartName = null, string? PackageDisplayName = null, string? PackagePublisherName = null);
+
+    /// <summary>Desktop entries that are runtimes / redistributables / SDK parts rather than apps.</summary>
+    private static readonly string[] ComponentNameParts =
+    [
+        "Redistributable", "Visual C++", "Runtime", "Update Health Tools", "Software Development Kit", "Windows SDK",
+        "Targeting Pack", "Microsoft .NET", "Host FX Resolver", "WinAppDeploy", "Python Launcher", "Launcher for Windows",
+        "Driver Package", "Microsoft Edge WebView2", "Windows Driver Package"
+    ];
+
+    internal static bool IsDesktopComponent(string name) =>
+        ComponentNameParts.Any(part => name.Contains(part, StringComparison.OrdinalIgnoreCase));
 
     private sealed record CommandResult(int ExitCode, string Output, string Error);
 
@@ -64,7 +85,8 @@ public sealed partial class WindowsUninstallService
     }
 
     private static List<UninstallTarget> ReadDesktopTargets() => WindowsSoftwareProvider.ReadInstalledApps(includeStoreApps: false)
-        .Select(app => new UninstallTarget(app, CreateDesktopStartInfo(app.DesktopRegistration) is not null)).ToList();
+        .Where(app => CreateDesktopStartInfo(app.DesktopRegistration) is not null)
+        .Select(app => new UninstallTarget(app, true) { IsComponent = IsDesktopComponent(app.DisplayName) }).ToList();
 
     public async Task<AppRemovalResult> UninstallAsync(UninstallTarget selected)
     {
@@ -168,8 +190,16 @@ public sealed partial class WindowsUninstallService
     private static async Task<List<UninstallTarget>> ReadAppxTargetsAsync(CancellationToken ct)
     {
         var command = "$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.Encoding]::UTF8; " +
+            "$apps=@{}; foreach($s in (Get-StartApps -ErrorAction SilentlyContinue)){ " +
+            "if($s.AppID -match '^([^!]+)!' -and !$apps.ContainsKey($Matches[1])){$apps[$Matches[1]]=$s} }; " +
+            // Localized names as Settings shows them (resolves strings kept in language resource packages).
+            "$names=@{}; try { $null=[Windows.Management.Deployment.PackageManager,Windows.Management.Deployment,ContentType=WindowsRuntime]; " +
+            "foreach($p in (New-Object Windows.Management.Deployment.PackageManager).FindPackagesForUser('')){ " +
+            "try { $names[$p.Id.FamilyName]=@($p.DisplayName,$p.PublisherDisplayName) } catch {} } } catch {}; " +
             "$items=@(Get-AppxPackage -PackageTypeFilter Main,Bundle | " +
-            "Select-Object Name,PackageFullName,PackageFamilyName,Publisher,@{n='Version';e={[string]$_.Version}},NonRemovable,IsBundle); " +
+            "Select-Object Name,PackageFullName,PackageFamilyName,Publisher,@{n='Version';e={[string]$_.Version}},NonRemovable,IsBundle,InstallLocation," +
+            "@{n='AppId';e={$apps[$_.PackageFamilyName].AppID}},@{n='StartName';e={$apps[$_.PackageFamilyName].Name}}," +
+            "@{n='PackageDisplayName';e={$names[$_.PackageFamilyName][0]}},@{n='PackagePublisherName';e={$names[$_.PackageFamilyName][1]}}); " +
             "ConvertTo-Json -InputObject $items -Compress";
         var result = await RunPowerShellAsync(command, TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
         if (result.ExitCode != 0)
@@ -177,14 +207,102 @@ public sealed partial class WindowsUninstallService
 
         return (JsonSerializer.Deserialize<List<AppxEntry>>(result.Output) ?? [])
             .GroupBy(item => item.PackageFamilyName, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.FirstOrDefault(item => item.IsBundle) ?? group.First())
-            .Select(item => new UninstallTarget(
-                new InstalledAppEntry($"StoreAppx:{item.PackageFullName}",
-                    item.Name.Equals("Microsoft.WindowsStore", StringComparison.OrdinalIgnoreCase) ? "Microsoft Store" : item.Name,
-                    item.Publisher ?? string.Empty, item.Version ?? string.Empty, InstallScope.StoreAppx, item.PackageFamilyName, true),
-                !item.NonRemovable, item.Name, item.PackageFullName))
+            .Select(group =>
+            {
+                var main = group.FirstOrDefault(item => !item.IsBundle);
+                return group.FirstOrDefault(item => item.IsBundle) is { } bundle
+                    ? bundle with
+                    {
+                        InstallLocation = main?.InstallLocation ?? bundle.InstallLocation,
+                        NonRemovable = bundle.NonRemovable || main?.NonRemovable == true
+                    }
+                    : main!;
+            })
+            .Where(item => !item.NonRemovable)
+            .Select(item =>
+            {
+                // PackageManager names first (localized, resolved); the manifest is the fallback when they are missing.
+                var (manifestName, manifestPublisher) = item.PackageDisplayName is { Length: > 0 } && item.PackagePublisherName is { Length: > 0 }
+                    ? (item.PackageDisplayName, item.PackagePublisherName)
+                    : PackageStrings(item);
+                return new UninstallTarget(
+                    new InstalledAppEntry($"StoreAppx:{item.PackageFullName}",
+                        item.Name.Equals("Microsoft.WindowsStore", StringComparison.OrdinalIgnoreCase) ? "Microsoft Store" : item.Name,
+                        item.Publisher ?? string.Empty, item.Version ?? string.Empty, InstallScope.StoreAppx, item.PackageFamilyName, true),
+                    true, item.Name, item.PackageFullName, item.InstallLocation, item.AppId)
+                {
+                    FriendlyName = !string.IsNullOrWhiteSpace(item.StartName) ? item.StartName
+                        : !string.IsNullOrWhiteSpace(item.PackageDisplayName) ? item.PackageDisplayName : manifestName,
+                    FriendlyPublisher = manifestPublisher ?? SubjectCommonName(item.Publisher),
+                    // No Start menu entry: an extension, codec, source or shell add-on rather than an app.
+                    IsComponent = string.IsNullOrWhiteSpace(item.AppId)
+                };
+            })
             .ToList();
     }
+
+    /// <summary>DisplayName / PublisherDisplayName from the package manifest, with ms-resource strings resolved.</summary>
+    private static (string? Name, string? Publisher) PackageStrings(AppxEntry item)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(item.InstallLocation))
+                return (null, null);
+            var manifest = Path.Combine(item.InstallLocation, "AppxManifest.xml");
+            if (!File.Exists(manifest))
+                return (null, null);
+            var properties = System.Xml.Linq.XDocument.Load(manifest).Root?.Elements()
+                .FirstOrDefault(element => element.Name.LocalName == "Properties");
+            string? Read(string name) => Resolve(item, properties?.Elements()
+                .FirstOrDefault(element => element.Name.LocalName == name)?.Value);
+            return (Read("DisplayName"), Read("PublisherDisplayName"));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException)
+        {
+            return (null, null);
+        }
+    }
+
+    private static string? Resolve(AppxEntry item, string? value)
+    {
+        value = value?.Trim();
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        if (!value.StartsWith("ms-resource:", StringComparison.OrdinalIgnoreCase))
+            return value;
+
+        var key = value["ms-resource:".Length..];
+        var candidates = key.StartsWith("//", StringComparison.Ordinal)
+            ? [value]
+            : key.StartsWith('/')
+                ? new[] { $"ms-resource://{item.Name}{key}" }
+                : new[] { $"ms-resource://{item.Name}/resources/{key}", $"ms-resource://{item.Name}/{key}" };
+        var buffer = new StringBuilder(512);
+        foreach (var candidate in candidates)
+        {
+            buffer.Clear();
+            if (SHLoadIndirectString("@{" + item.PackageFullName + "?" + candidate + "}", buffer, buffer.Capacity, IntPtr.Zero) == 0 &&
+                buffer.Length > 0 && !buffer.ToString().StartsWith("ms-resource:", StringComparison.OrdinalIgnoreCase))
+                return buffer.ToString();
+        }
+        return null;
+    }
+
+    /// <summary>"CN=Microsoft Corporation, O=…" → "Microsoft Corporation"; a bare GUID-like CN is dropped.</summary>
+    internal static string? SubjectCommonName(string? subject)
+    {
+        if (string.IsNullOrWhiteSpace(subject))
+            return null;
+        string? Part(string prefix) => subject.Split(',').Select(part => part.Trim())
+            .FirstOrDefault(part => part.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))?[prefix.Length..].Trim('"', ' ');
+        var name = Part("CN=");
+        if (name is null || Guid.TryParse(name, out _))
+            name = Part("O=");
+        return string.IsNullOrWhiteSpace(name) || Guid.TryParse(name, out _) ? null : name;
+    }
+
+    [DllImport("shlwapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern int SHLoadIndirectString(string source, StringBuilder output, int capacity, IntPtr reserved);
 
     private static async Task<AppRemovalResult> RemoveAppxAsync(UninstallTarget selected)
     {

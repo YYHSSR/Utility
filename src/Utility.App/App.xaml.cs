@@ -87,7 +87,7 @@ public partial class App : Application
         }
 
         _mainViewModel = new MainViewModel(
-            stateStore, validator, battery, _telemetryProvider, software, drivers, hardware, coordinator);
+            stateStore, validator, battery, _telemetryProvider, software, hardware, coordinator);
 
         // Optional: "--page <index>" opens a specific page (see MainViewModel.Nav* for indices).
         var pageArg = Array.IndexOf(e.Args, "--page");

@@ -123,6 +123,39 @@ public partial class MainWindow : Window
 
     private void OnToastClick(object sender, System.Windows.Input.MouseButtonEventArgs e) => HideToast();
 
+    private System.Windows.Threading.DispatcherTimer? _copiedTimer;
+
+    /// <summary>Copies the device name; the icon shows a check for a moment as confirmation.</summary>
+    private void OnCopyDeviceClick(object sender, RoutedEventArgs e)
+    {
+        var text = (DataContext as MainViewModel)?.MachineBannerText;
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+        try
+        {
+            Clipboard.SetText(text);
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            return; // Clipboard held by another app: nothing was copied, so no confirmation.
+        }
+
+        CopyDeviceButton.Content = "\uE73E";
+        CopyDeviceButton.Tag = "copied";
+        if (_copiedTimer is null)
+        {
+            _copiedTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1.6) };
+            _copiedTimer.Tick += (_, _) =>
+            {
+                _copiedTimer.Stop();
+                CopyDeviceButton.Content = "\uE8C8";
+                CopyDeviceButton.Tag = null;
+            };
+        }
+        _copiedTimer.Stop();
+        _copiedTimer.Start();
+    }
+
     private void HideToast()
     {
         _toastTimer.Stop();

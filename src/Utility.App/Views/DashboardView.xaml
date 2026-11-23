@@ -52,7 +52,22 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Margin="0,0,20,0" VerticalAlignment="Center">
-                        <ctl:SelectableTextBlock Style="{StaticResource MetricValueStyle}" Text="{Binding LiveThermalModeText}" Margin="0,0,0,6" />
+                        <!-- Label like the other two columns; the raw mode text only appears when it is not one of the two profiles (e.g. 需管理员) -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <ctl:SelectableTextBlock Style="{StaticResource MutedLabelStyle}" Foreground="{StaticResource HeroMutedBrush}" Text="{loc:Tr LblPerformanceMode}" />
+                            <ctl:SelectableTextBlock Margin="8,0,0,0" Foreground="{StaticResource HeroMutedBrush}" Text="{Binding LiveThermalModeText}">
+                                <ctl:SelectableTextBlock.Style>
+                                    <Style TargetType="ctl:SelectableTextBlock" BasedOn="{StaticResource MutedLabelStyle}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ActiveProfileId}" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ctl:SelectableTextBlock.Style>
+                            </ctl:SelectableTextBlock>
+                        </StackPanel>
                         <WrapPanel Orientation="Horizontal">
                             <Border Style="{StaticResource SegmentHostStyle}" Background="#B3FFFFFF" Margin="0,0,10,0">
                                 <StackPanel Orientation="Horizontal">
@@ -67,7 +82,17 @@
                             <Button Style="{StaticResource PrimaryButtonStyle}" Content="{loc:Tr BtnCooling}" Tag="&#xE9CA;" ToolTip="{loc:Tr TipCooling}"
                                     Command="{Binding StartCoolingCommand}" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <Button Content="{loc:Tr BtnStopCooling}" Tag="&#xE71A;" Background="#CCFFFFFF" VerticalAlignment="Center"
-                                    Command="{Binding StopCoolingCommand}" />
+                                    Command="{Binding StopCoolingCommand}">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                        <Style.Triggers>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
                         </WrapPanel>
                     </StackPanel>
                     <Border Grid.Column="1" BorderBrush="{StaticResource HeroDividerBrush}" BorderThickness="1,0,0,0" Padding="20,0,12,0">

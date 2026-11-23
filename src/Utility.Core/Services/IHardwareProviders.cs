@@ -34,7 +34,6 @@ public interface IDriverProvider
 {
     Task<IReadOnlyList<InstalledDriverEntry>> ListDriversAsync(CancellationToken ct = default);
     Task<DriverPackageInspection> InspectLocalPackageAsync(string filePath, CancellationToken ct = default);
-    bool OpenExternalTarget(string urlOrSettingsUri);
 }
 
 /// <summary>Lenovo hardware control, WMI capability probe, and Windows power mode provider.</summary>

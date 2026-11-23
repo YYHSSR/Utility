@@ -20,21 +20,20 @@ public sealed record InstalledDriverEntry(
     string DriverDate,
     string InfName,
     string HardwareId,
-    DriverCategory Category);
-
-/// <summary>Verified official resource links for driver acquisition and OS updates.</summary>
-public sealed record OfficialDriverLinks(
-    string Lenovo83JJDriverPage,
-    string NvidiaDriverPage,
-    string WindowsUpdateUri,
-    string WindowsOptionalUpdatesUri)
+    DriverCategory Category)
 {
-    public static OfficialDriverLinks Default => new(
-        "https://pcsupport.lenovo.com/us/en/products/laptops-and-netbooks/legion-series/legion-5-15irx9/83jj/downloads/driver-list",
-        "https://www.nvidia.com/en-us/drivers/",
-        "ms-settings:windowsupdate",
-        "ms-settings:windowsupdate-optionalupdates");
+    public string? DeviceInstanceId { get; init; }
+    public IReadOnlyList<string> HardwareIds { get; init; } = [];
+    public bool IsHealthy { get; init; }
 }
+
+public sealed record LenovoDriverUpdate(string Id, string Title, string CurrentVersion, string NewVersion,
+    string ReleaseDate, string ManifestHash);
+
+public sealed record LenovoDriverScan(IReadOnlyList<LenovoDriverUpdate> Updates, int ComparedPackages, int FailedManifests);
+
+public sealed record LenovoDriverInstallResult(bool Active, bool RestartRequired, int RemovedPackages, int RetainedPackages);
+public sealed record LenovoDriverCleanupResult(int RemovedPackages, int PendingPackages);
 
 /// <summary>Raw metadata extracted from a user-selected local driver package prior to launch evaluation.</summary>
 public sealed record DriverPackageInspection(

@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Windows;
+using System.Windows.Media;
 using Utility.App.Localization;
+using Utility.App.Views;
 using Utility.Platform.Providers;
 
 namespace Utility.App.ViewModels;
@@ -10,17 +12,17 @@ internal sealed class CleanupViewModel : ViewModelBase
     private readonly WindowsUninstallService _uninstall = new();
     private readonly UninstallResidualService _residual;
     private CancellationTokenSource? _scanCancellation;
-    private IReadOnlyList<UninstallTarget> _inventory = [];
+    private IReadOnlyList<CleanupAppRow> _inventory = [];
     private UninstallTarget? _lastUninstall;
     private string _search = string.Empty;
+    private bool _showComponents;
+    private string _componentSummary = string.Empty;
     private string _status;
     private bool _isBusy;
-    private bool _showResidual;
     private CleanupAppRow? _selectedApp;
     private IReadOnlyList<CleanupAppRow> _appRows = [];
     // Ticked apps by stable id, so ticks survive search filtering and list refreshes.
     private readonly HashSet<string> _checkedAppIds = [];
-    private IReadOnlyList<CleanupItemRow> _residualRows = [];
     private readonly List<AsyncRelayCommand> _actions = [];
 
     public CleanupViewModel()
@@ -31,30 +33,23 @@ internal sealed class CleanupViewModel : ViewModelBase
         RefreshAppsCommand = Action(() => RunAsync(RefreshAppsAsync, cancellable: true));
         UninstallCommand = Action(() => RunAsync(UninstallAsync),
             () => UninstallTargets().Count > 0);
-        ScanResidualCommand = Action(() => RunAsync(ScanResidualAsync, cancellable: true), () => _lastUninstall is not null);
-        RemoveResidualCommand = Action(() => RunAsync(RemoveResidualAsync), () => ResidualRows.Count > 0);
-        ReturnToAppsCommand = new(() =>
+        ScanResidualCommand = Action(() => RunAsync(_ =>
         {
-            ShowResidual = false;
-            SetField(ref _status, Loc.Get("CleanupSoftwareHint"), nameof(Status));
-        }, () => !IsBusy);
-        SelectItemsCommand = new(SelectItems, () => !IsBusy);
+            if (_lastUninstall is { } target)
+                ReviewResiduals(target);
+            return Task.CompletedTask;
+        }), () => _lastUninstall is not null);
         _lastUninstall = _residual.LoadLastUninstall();
     }
 
     public AsyncRelayCommand RefreshAppsCommand { get; }
     public AsyncRelayCommand UninstallCommand { get; }
     public AsyncRelayCommand ScanResidualCommand { get; }
-    public AsyncRelayCommand RemoveResidualCommand { get; }
-    public RelayCommand ReturnToAppsCommand { get; }
-    public RelayCommand SelectItemsCommand { get; }
-
-    public bool IsAppPage => !ShowResidual;
-    public bool IsResidualPage => ShowResidual;
 
     /// <summary>
-    /// Current status line. Every result/progress update is also raised through <see cref="StatusReported"/>
-    /// (shown as the auto-hiding toast); page hints and restored statuses are set silently.
+    /// Current status line. Results are also raised through <see cref="StatusReported"/> (the auto-hiding toast);
+    /// progress lines ("正在…") are set with <see cref="SetProgress"/> and stay silent, so a toast always means
+    /// something finished.
     /// </summary>
     public string Status
     {
@@ -66,6 +61,8 @@ internal sealed class CleanupViewModel : ViewModelBase
                 StatusReported?.Invoke(value);
         }
     }
+
+    private void SetProgress(string text) => SetField(ref _status, text, nameof(Status));
 
     public event Action<string>? StatusReported;
 
@@ -79,6 +76,20 @@ internal sealed class CleanupViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Also list runtimes, codecs, extensions and other components (hidden by default to avoid mistakes).</summary>
+    public bool ShowComponents
+    {
+        get => _showComponents;
+        set
+        {
+            if (SetField(ref _showComponents, value))
+                FilterApps();
+        }
+    }
+
+    /// <summary>"另有 N 个系统组件已隐藏" next to the toggle; empty when there are none or they are shown.</summary>
+    public string ComponentSummary { get => _componentSummary; private set => SetField(ref _componentSummary, value); }
+
     public bool IsBusy
     {
         get => _isBusy;
@@ -88,20 +99,6 @@ internal sealed class CleanupViewModel : ViewModelBase
                 return;
             foreach (var command in _actions)
                 command.RaiseCanExecuteChanged();
-            ReturnToAppsCommand.RaiseCanExecuteChanged();
-            SelectItemsCommand.RaiseCanExecuteChanged();
-        }
-    }
-
-    public bool ShowResidual
-    {
-        get => _showResidual;
-        private set
-        {
-            if (!SetField(ref _showResidual, value))
-                return;
-            RaisePropertyChanged(nameof(IsAppPage));
-            RaisePropertyChanged(nameof(IsResidualPage));
         }
     }
 
@@ -116,7 +113,6 @@ internal sealed class CleanupViewModel : ViewModelBase
     }
 
     public IReadOnlyList<CleanupAppRow> AppRows { get => _appRows; private set => SetField(ref _appRows, value); }
-    public IReadOnlyList<CleanupItemRow> ResidualRows { get => _residualRows; private set => SetField(ref _residualRows, value); }
 
     public void CancelScan() => _scanCancellation?.Cancel();
 
@@ -155,37 +151,50 @@ internal sealed class CleanupViewModel : ViewModelBase
         }
     }
 
-    private void SelectItems()
-    {
-        foreach (var row in ResidualRows)
-            row.Selected = true;
-    }
-
     private async Task RefreshAppsAsync(CancellationToken ct)
     {
-        Status = Loc.Get("CleanupLoadingApps");
+        SetProgress(Loc.Get("CleanupLoadingApps"));
         var result = await _uninstall.ListAsync(ct, _inventory.Count == 0 ? rows =>
             Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 ct.ThrowIfCancellationRequested();
-                _inventory = rows;
-                FilterApps();
+                SetInventory(rows);
             }).Task : null);
-        _inventory = result.Apps;
-        FilterApps();
+        SetInventory(result.Apps);
         Status = result.StoreError is null
-            ? Loc.Format("CleanupAppsFound", _inventory.Count, _inventory.Count(app => app.CanRemove))
+            ? Loc.Format("CleanupAppsFound", _inventory.Count)
             : Loc.Format("CleanupStoreError", result.StoreError);
+    }
+
+    private void SetInventory(IReadOnlyList<UninstallTarget> targets)
+    {
+        _inventory = targets.Select(target =>
+            new CleanupAppRow(target, _checkedAppIds.Contains(AppKey(target)), OnAppCheckChanged)).ToArray();
+        // A component named like a real app (PixPin's context menu, WeChat's share extension…) gets its package
+        // name appended, so the two rows can be told apart.
+        var appNames = _inventory.Where(row => !row.IsComponent).Select(row => row.BaseName)
+            .ToHashSet(StringComparer.CurrentCultureIgnoreCase);
+        foreach (var row in _inventory.Where(row => row.IsComponent && row.Target.PackageName is { } package &&
+                                                    !package.Equals(row.BaseName, StringComparison.OrdinalIgnoreCase) &&
+                                                    (appNames.Contains(row.BaseName) || appNames.Any(name => name.Contains(row.BaseName, StringComparison.CurrentCultureIgnoreCase)))))
+            row.Disambiguate();
+        // Sort by the name people see (the service sorts by the internal package name).
+        _inventory = _inventory.OrderBy(row => row.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
+        FilterApps();
     }
 
     private void FilterApps()
     {
         var query = Search.Trim();
         var before = SelectedApp?.Target.App.StableId;
-        AppRows = _inventory.Where(app => query.Length == 0 ||
-                app.App.DisplayName.Contains(query, StringComparison.CurrentCultureIgnoreCase) ||
-                app.App.Publisher.Contains(query, StringComparison.CurrentCultureIgnoreCase))
-            .Select(app => new CleanupAppRow(app, _checkedAppIds.Contains(AppKey(app)), OnAppCheckChanged)).ToArray();
+        // Searching also finds hidden components, so a known name is never "missing".
+        var matches = _inventory.Where(app => query.Length == 0 ||
+                app.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase) ||
+                app.Target.App.DisplayName.Contains(query, StringComparison.CurrentCultureIgnoreCase) ||
+                app.Publisher.Contains(query, StringComparison.CurrentCultureIgnoreCase)).ToArray();
+        AppRows = ShowComponents || query.Length > 0 ? matches : matches.Where(app => !app.IsComponent).ToArray();
+        var hidden = matches.Length - AppRows.Count;
+        ComponentSummary = hidden > 0 ? Loc.Format("CleanupComponentsHidden", hidden) : string.Empty;
         SelectedApp = AppRows.FirstOrDefault(row => row.Target.App.StableId == before);
         UninstallCommand.RaiseCanExecuteChanged();
     }
@@ -205,7 +214,7 @@ internal sealed class CleanupViewModel : ViewModelBase
     /// <summary>Ticked removable apps; falls back to the highlighted row when nothing is ticked.</summary>
     private IReadOnlyList<UninstallTarget> UninstallTargets()
     {
-        var ticked = _inventory.Where(app => app.CanRemove && _checkedAppIds.Contains(AppKey(app))).ToArray();
+        var ticked = _inventory.Where(row => row.Selected).Select(row => row.Target).ToArray();
         if (ticked.Length > 0)
             return ticked;
         return SelectedApp?.Target is { CanRemove: true } target ? [target] : [];
@@ -221,87 +230,40 @@ internal sealed class CleanupViewModel : ViewModelBase
             ct.ThrowIfCancellationRequested();
             var message = target.PackageName == "Microsoft.WindowsStore"
                 ? Loc.Get("CleanupConfirmStoreUninstall")
-                : Loc.Format("CleanupConfirmUninstall", target.App.DisplayName);
+                : Loc.Format("CleanupConfirmUninstall", target.FriendlyName ?? target.App.DisplayName);
             if (!Confirm(message))
                 continue;
 
             RememberUninstall(target);
-            Status = Loc.Format("CleanupWaitingUninstall", target.App.DisplayName);
+            SetProgress(Loc.Format("CleanupWaitingUninstall", target.FriendlyName ?? target.App.DisplayName));
             lastResult = await _uninstall.UninstallAsync(target);
             _checkedAppIds.Remove(AppKey(target));
+            if (lastResult.Removed)
+                ReviewResiduals(target, lastResult.RestartRequired);
         }
 
         if (lastResult is null)
             return;
         await RefreshAppsAsync(ct);
-        // Leftover scan covers the last uninstalled app (the residual view tracks one app at a time).
-        if (lastResult.Removed)
-        {
-            await ScanResidualAsync(ct);
-            if (lastResult.RestartRequired)
-                Status += " " + Loc.Get("CleanupRestartRequired");
-        }
-        else
-        {
+        if (!lastResult.Removed)
             Status = Loc.Format("CleanupUninstallPending", lastResult.Detail ?? string.Empty);
-        }
     }
 
     private void RememberUninstall(UninstallTarget target)
     {
         _lastUninstall = target;
-        ResidualRows = [];
         _residual.SaveLastUninstall(target);
         ScanResidualCommand.RaiseCanExecuteChanged();
     }
 
-    private async Task ScanResidualAsync(CancellationToken ct)
-    {
-        if (_lastUninstall is null)
-            return;
-        Status = Loc.Format("CleanupFindingResiduals", _lastUninstall.App.DisplayName);
-        var result = await _residual.ScanAsync(_lastUninstall, ct);
-        ResidualRows = result.Items.Select(CleanupItemRow.ForResidual).ToArray();
-        ShowResidual = true;
-        Status = Loc.Format("CleanupResidualsFound", _lastUninstall.App.DisplayName, ResidualRows.Count);
-        if (result.Limited)
-            Status += " " + Loc.Get("CleanupResultLimit");
-    }
-
-    private async Task RemoveResidualAsync(CancellationToken ct)
-    {
-        var selected = ResidualRows.Where(row => row.Selected).Select(row => row.Residual!).ToArray();
-        if (selected.Length == 0 || _lastUninstall is null)
+    private void ReviewResiduals(UninstallTarget target, bool restartRequired = false) =>
+        new UninstallResidualWindow(_residual, target, restartRequired)
         {
-            Status = Loc.Get("CleanupNothingSelected");
-            return;
-        }
-
-        if (!Confirm(Loc.Format("CleanupConfirmResidual", _lastUninstall.App.DisplayName, selected.Length)))
-            return;
-
-        Status = Loc.Get("CleanupRemoving");
-        var result = await _residual.RemoveAsync(_lastUninstall, selected);
-        var paths = result.Removed.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        ResidualRows = ResidualRows.Where(row => !paths.Contains(row.Path)).ToArray();
-        ShowBatchResult(result);
-    }
+            Owner = Application.Current.MainWindow
+        }.ShowDialog();
 
     private static bool Confirm(string message) => MessageBox.Show(Application.Current.MainWindow,
         message, Loc.Get("NavCleanup"), MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
-
-    private void ShowBatchResult(CleanupBatchResult result)
-    {
-        Status = Loc.Format("CleanupBatchDone", result.Removed.Count, result.Errors.Count);
-        if (result.BackupFolder is { } folder)
-            Status += " " + Loc.Format("CleanupBackupLocation", folder);
-        if (result.Errors.Count > 0)
-        {
-            var details = string.Join(Environment.NewLine, result.Errors.Take(10));
-            MessageBox.Show(Application.Current.MainWindow, Status + Environment.NewLine + Environment.NewLine + details,
-                Loc.Get("NavCleanup"), MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-    }
 
     internal static string FormatSize(long bytes) => bytes >= 1024L * 1024 * 1024
         ? (bytes / 1073741824d).ToString("0.##", CultureInfo.CurrentCulture) + " GiB"
@@ -344,6 +306,8 @@ internal sealed class CleanupAppRow : ViewModelBase
 {
     private readonly Action<CleanupAppRow> _onSelectedChanged;
     private bool _selected;
+    private bool _iconRequested;
+    private ImageSource? _icon;
 
     public CleanupAppRow(UninstallTarget target, bool selected, Action<CleanupAppRow> onSelectedChanged)
     {
@@ -364,9 +328,23 @@ internal sealed class CleanupAppRow : ViewModelBase
         }
     }
 
-    public string Name => Target.App.DisplayName;
-    public string Publisher => Target.App.Publisher;
+    private string? _name;
+    internal string BaseName => Target.FriendlyName ?? Target.App.DisplayName;
+    public string Name => _name ?? BaseName;
+    internal void Disambiguate() => _name = $"{BaseName}（{Target.PackageName}）";
+    public string Publisher => Target.FriendlyPublisher ?? Target.App.Publisher;
     public string Version => Target.App.Version;
-    public string Type => Target.PackageName is null ? "Win32" : "MSIX / Appx";
-    public string Removability => Loc.Get(Target.CanRemove ? "CleanupRemovable" : "CleanupUnavailable");
+    public bool IsComponent => Target.IsComponent;
+    public string Type => Loc.Get(IsComponent ? "AppTypeComponent" : Target.PackageName is null ? "AppTypeDesktop" : "AppTypeStore");
+    /// <summary>Package name under the friendly one, so the technical identity stays visible (tooltip).</summary>
+    public string Detail => Target.PackageName is { } package && package != Name ? package : Name;
+    public ImageSource? Icon { get => _icon; private set => SetField(ref _icon, value); }
+
+    public async Task LoadIconAsync()
+    {
+        if (_iconRequested)
+            return;
+        _iconRequested = true;
+        Icon = await InstalledAppIconLoader.LoadAsync(Target);
+    }
 }

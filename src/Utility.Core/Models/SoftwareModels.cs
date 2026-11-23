@@ -24,7 +24,8 @@ public sealed record InstalledAppEntry(
 }
 
 public sealed record DesktopUninstallRegistration(
-    string RegistryKeyName, string? Command, string? InstallLocation, bool IsMsi, bool NoRemove);
+    string RegistryKeyName, string? Command, string? InstallLocation, bool IsMsi, bool NoRemove,
+    string? DisplayIcon = null);
 
 /// <summary>Origin of a Windows startup entry.</summary>
 public enum StartupEntrySource
