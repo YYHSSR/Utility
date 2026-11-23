@@ -18,6 +18,7 @@ public sealed record UninstallTarget(
     public string? FriendlyPublisher { get; init; }
     /// <summary>Runtime, redistributable, codec/extension or other component rather than an app people launch.</summary>
     public bool IsComponent { get; init; }
+    public IReadOnlyList<UninstallClassRegistration>? ResidualClasses { get; init; }
 }
 
 public sealed record UninstallInventory(IReadOnlyList<UninstallTarget> Apps, string? StoreError);

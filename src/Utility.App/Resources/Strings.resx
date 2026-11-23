@@ -331,6 +331,9 @@
   <data name="CleanupEvidenceProductUpdateCache" xml:space="preserve"><value>App update cache</value></data>
   <data name="CleanupEvidenceInstallShortcut" xml:space="preserve"><value>Shortcut targets the original installation</value></data>
   <data name="CleanupEvidenceEmptyDirectory" xml:space="preserve"><value>Empty app folder</value></data>
+  <data name="CleanupEvidenceEmptySandbox" xml:space="preserve"><value>Empty app sandbox</value></data>
+  <data name="CleanupEvidenceAppProtocol" xml:space="preserve"><value>App link protocol</value></data>
+  <data name="CleanupEvidenceFileAssociation" xml:space="preserve"><value>App file association</value></data>
   <data name="CleanupConfirmStoreUninstall" xml:space="preserve"><value>Remove Microsoft Store from the current user? This affects installing and updating apps through the Store. Windows decides whether removal is available.</value></data>
   <data name="LblLiveMonitor" xml:space="preserve"><value>Live monitor</value></data>
   <data name="LblCpuFan" xml:space="preserve"><value>CPU fan</value></data>

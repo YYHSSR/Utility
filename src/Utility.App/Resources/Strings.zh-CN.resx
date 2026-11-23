@@ -331,6 +331,9 @@
   <data name="CleanupEvidenceProductUpdateCache" xml:space="preserve"><value>产品更新缓存</value></data>
   <data name="CleanupEvidenceInstallShortcut" xml:space="preserve"><value>快捷方式指向原安装目录</value></data>
   <data name="CleanupEvidenceEmptyDirectory" xml:space="preserve"><value>应用空文件夹</value></data>
+  <data name="CleanupEvidenceEmptySandbox" xml:space="preserve"><value>应用的空沙盒目录</value></data>
+  <data name="CleanupEvidenceAppProtocol" xml:space="preserve"><value>应用的链接协议</value></data>
+  <data name="CleanupEvidenceFileAssociation" xml:space="preserve"><value>应用的文件关联</value></data>
   <data name="CleanupConfirmStoreUninstall" xml:space="preserve"><value>从当前用户卸载 Microsoft Store？这会影响通过商店安装和更新应用，能否卸载由 Windows 决定。</value></data>
   <data name="LblLiveMonitor" xml:space="preserve"><value>实时监控</value></data>
   <data name="LblCpuFan" xml:space="preserve"><value>CPU 风扇</value></data>

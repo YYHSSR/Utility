@@ -12,7 +12,7 @@ C# · WPF · .NET 10 · 无后台服务 · 无内核驱动 · 按需提权</p>
 [![Platform](https://img.shields.io/badge/platform-Windows%2011%20x64-0078D4?style=flat-square&logo=windows11&logoColor=white)](https://github.com/YYHSSR/Utility)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![WPF](https://img.shields.io/badge/UI-WPF-68217A?style=flat-square)](https://github.com/YYHSSR/Utility)
-[![Version](https://img.shields.io/badge/version-0.6.1-2EA043?style=flat-square)](https://github.com/YYHSSR/Utility)
+[![Version](https://img.shields.io/badge/version-0.6.2-2EA043?style=flat-square)](https://github.com/YYHSSR/Utility)
 [![License](https://img.shields.io/badge/license-Non--Commercial%20%7C%20ShareAlike-8B5CF6?style=flat-square)](LICENSE)
 
 [功能](#功能) · [快速开始](#快速开始) · [安全设计](#安全设计) · [构建](#构建与测试) · [许可证](#许可证) · [贡献者](CONTRIBUTORS.md)

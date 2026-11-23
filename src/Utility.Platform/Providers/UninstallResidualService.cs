@@ -16,14 +16,14 @@ public sealed record RegistryResidual(RegistryHive Hive, RegistryView View, stri
 }
 
 public sealed record AppResidual(ScannedFile? File, RegistryResidual? Registry, string Evidence,
-    string? EmptyDirectory = null, string? DirectoryRoot = null)
+    string? EmptyDirectory = null, string? DirectoryRoot = null, bool EmptyDirectoryTree = false)
 {
     public string Path => File?.Path ?? EmptyDirectory ?? Registry!.DisplayPath;
 }
 
 public sealed record ResidualScanResult(IReadOnlyList<AppResidual> Items, bool Limited);
 
-public sealed class UninstallResidualService(WindowsUninstallService uninstall)
+public sealed partial class UninstallResidualService(WindowsUninstallService uninstall)
 {
     private const int MaxFiles = 3000;
     private const int MaxRegistryNodes = 512;
@@ -49,7 +49,7 @@ public sealed class UninstallResidualService(WindowsUninstallService uninstall)
         try
         {
             var info = new FileInfo(LastUninstallPath);
-            if (!info.Exists || info.Length > 65536 || !DiskCleanupService.HasSafeParents(info.FullName))
+            if (!info.Exists || info.Length > 256 * 1024 || !DiskCleanupService.HasSafeParents(info.FullName))
                 return null;
             return JsonSerializer.Deserialize<UninstallTarget>(File.ReadAllText(info.FullName));
         }
@@ -85,6 +85,23 @@ public sealed class UninstallResidualService(WindowsUninstallService uninstall)
         return await Task.Run(() => Scan(target, ct), ct).ConfigureAwait(false);
     }
 
+    public Task<UninstallTarget> CaptureAsync(UninstallTarget target, CancellationToken ct) =>
+        Task.Run(() =>
+        {
+            try
+            {
+                if (GetFootprints(target).InstallPath is not { } installPath)
+                    return target;
+                var classes = ReadOwnedClasses(target, installPath, ct).Take(128).ToArray();
+                return target with { ResidualClasses = classes };
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                // A registry read failure should not prevent the app's own uninstaller from running.
+                return target;
+            }
+        }, ct);
+
     public async Task<CleanupBatchResult> RemoveAsync(UninstallTarget target, IReadOnlyList<AppResidual> selected)
     {
         if (!await uninstall.IsUninstalledAsync(target, CancellationToken.None).ConfigureAwait(false))
@@ -99,6 +116,11 @@ public sealed class UninstallResidualService(WindowsUninstallService uninstall)
         var items = new List<AppResidual>();
         var locations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var limited = false;
+        if (footprints.InstallPath is { } sandboxInstallPath)
+        {
+            foreach (var sandbox in ScanEmptySandboxes(sandboxInstallPath, ct))
+                AddFileSystemItem(sandbox);
+        }
         foreach (var folder in footprints.Folders)
         {
             foreach (var file in DiskCleanupService.WalkFiles(folder.Path, _ => limited, ct, directory =>
@@ -165,9 +187,6 @@ public sealed class UninstallResidualService(WindowsUninstallService uninstall)
                 ScanValueReferences(@"Software\Microsoft\Windows\CurrentVersion\RunOnce");
                 ScanCommandChildren(@"Software\Microsoft\Windows\CurrentVersion\App Paths", child => child, "");
                 ScanCommandChildren(@"Software\Classes\Applications", child => $@"{child}\shell\open\command", "");
-                ScanCommandChildren(@"Software\Classes", child => $@"{child}\shell\open\command", "",
-                    child => footprints.ProductNames.Any(name => child.Equals(name, StringComparison.OrdinalIgnoreCase)
-                        || child.StartsWith(name + ".", StringComparison.OrdinalIgnoreCase)));
             }
 
             void AddKey(string path, string reason)
@@ -205,8 +224,7 @@ public sealed class UninstallResidualService(WindowsUninstallService uninstall)
                 }
             }
 
-            void ScanCommandChildren(string path, Func<string, string> getCommandPath, string value,
-                Predicate<string>? include = null)
+            void ScanCommandChildren(string path, Func<string, string> getCommandPath, string value)
             {
                 using var parent = TryOpen(baseKey, path);
                 if (parent is null)
@@ -214,8 +232,6 @@ public sealed class UninstallResidualService(WindowsUninstallService uninstall)
                 foreach (var child in parent.GetSubKeyNames())
                 {
                     ct.ThrowIfCancellationRequested();
-                    if (include is not null && !include(child))
-                        continue;
                     using var command = TryOpen(parent, getCommandPath(child));
                     if (command is not null &&
                         ReferencesInstallation(command.GetValue(value, null, RegistryValueOptions.DoNotExpandEnvironmentNames),
@@ -225,6 +241,14 @@ public sealed class UninstallResidualService(WindowsUninstallService uninstall)
                         AddReference(path + "\\" + getCommandPath(child), value);
                     }
                 }
+            }
+        }
+        if (footprints.InstallPath is { } classInstallPath)
+        {
+            foreach (var residual in ScanClassRegistrations(target, classInstallPath, ct))
+            {
+                if (locations.Add(residual.Path))
+                    items.Add(residual);
             }
         }
         return new ResidualScanResult(items, limited);
@@ -253,9 +277,21 @@ public sealed class UninstallResidualService(WindowsUninstallService uninstall)
                 }
                 else if (item.EmptyDirectory is { } directory)
                 {
-                    if (!DiskCleanupService.HasSafeParents(directory))
+                    if (item.EmptyDirectoryTree)
+                    {
+                        var folders = ReadEmptyTree(directory, CancellationToken.None)
+                            ?? throw new IOException("The sandbox contains files or can no longer be verified.");
+                        foreach (var folder in folders.AsEnumerable().Reverse())
+                        {
+                            if (!DiskCleanupService.HasSafeParents(folder))
+                                throw new IOException("The sandbox folder is redirected.");
+                            Directory.Delete(folder, recursive: false);
+                        }
+                    }
+                    else if (!DiskCleanupService.HasSafeParents(directory))
                         throw new IOException("The folder is redirected.");
-                    Directory.Delete(directory, recursive: false);
+                    else
+                        Directory.Delete(directory, recursive: false);
                 }
                 else if (item.Registry is { } registry)
                 {
@@ -324,6 +360,53 @@ public sealed class UninstallResidualService(WindowsUninstallService uninstall)
                 !Directory.EnumerateFileSystemEntries(path).Any();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return false; }
+    }
+
+    private static IEnumerable<AppResidual> ScanEmptySandboxes(string installPath, CancellationToken ct)
+    {
+        var packages = Path.Combine(Local, "Packages");
+        var prefix = Path.GetFileName(installPath) + ".sandbox.";
+        foreach (var path in SafeChildDirectories(packages))
+        {
+            ct.ThrowIfCancellationRequested();
+            var name = Path.GetFileName(path);
+            if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && name.Length > prefix.Length &&
+                ReadEmptyTree(path, ct) is not null)
+                yield return new(null, null, "EmptySandbox", path, EmptyDirectoryTree: true);
+        }
+    }
+
+    private static string[] SafeChildDirectories(string path)
+    {
+        try
+        {
+            return DiskCleanupService.HasSafeParents(path) ? Directory.GetDirectories(path) : [];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return []; }
+    }
+
+    private static List<string>? ReadEmptyTree(string root, CancellationToken ct)
+    {
+        var folders = new List<string> { root };
+        try
+        {
+            for (var i = 0; i < folders.Count; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+                var folder = folders[i];
+                if (!DiskCleanupService.HasSafeParents(folder))
+                    return null;
+                foreach (var entry in new DirectoryInfo(folder).EnumerateFileSystemInfos())
+                {
+                    if (entry is not DirectoryInfo || folders.Count >= MaxFiles ||
+                        (entry.Attributes & (FileAttributes.ReparsePoint | FileAttributes.Offline)) != 0)
+                        return null;
+                    folders.Add(entry.FullName);
+                }
+            }
+            return folders;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }
     }
 
     private static IEnumerable<AppResidual> ScanShortcuts(string installPath, string[] names, CancellationToken ct)
@@ -468,7 +551,8 @@ public sealed class UninstallResidualService(WindowsUninstallService uninstall)
             return (folders, new[] { family, target.PackageName }.Where(name => SafeSegment(name) is not null).ToArray(), null, null);
         }
 
-        var apps = WindowsSoftwareProvider.ReadInstalledApps(includeStoreApps: false);
+        var apps = WindowsSoftwareProvider.ReadInstalledApps(includeStoreApps: false)
+            .Where(app => !app.StableId.Equals(target.App.StableId, StringComparison.OrdinalIgnoreCase)).ToArray();
         var otherNames = apps.SelectMany(app => ProductNames(app).Select(Normalize).Append(Normalize(app.Publisher)))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var publisher = SafeSegment(target.App.Publisher);

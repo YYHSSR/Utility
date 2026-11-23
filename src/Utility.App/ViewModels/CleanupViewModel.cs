@@ -234,12 +234,13 @@ internal sealed class CleanupViewModel : ViewModelBase
             if (!Confirm(message))
                 continue;
 
-            RememberUninstall(target);
             SetProgress(Loc.Format("CleanupWaitingUninstall", target.FriendlyName ?? target.App.DisplayName));
-            lastResult = await _uninstall.UninstallAsync(target);
+            var captured = await _residual.CaptureAsync(target, ct);
+            RememberUninstall(captured);
+            lastResult = await _uninstall.UninstallAsync(captured);
             _checkedAppIds.Remove(AppKey(target));
             if (lastResult.Removed)
-                ReviewResiduals(target, lastResult.RestartRequired);
+                ReviewResiduals(captured, lastResult.RestartRequired);
         }
 
         if (lastResult is null)

@@ -15,7 +15,7 @@
     <Title>Utility</Title>
     <FileDescription>Utility</FileDescription>
     <Company>Utility</Company>
-    <Version>0.6.1</Version>
+    <Version>0.6.2</Version>
     <NeutralLanguage>en</NeutralLanguage>
     <ApplicationIcon>..\..\assets\Utility.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
