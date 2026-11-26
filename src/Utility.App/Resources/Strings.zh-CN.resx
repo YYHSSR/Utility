@@ -431,6 +431,7 @@
   <data name="MsgStartupFailed" xml:space="preserve"><value>无法修改「{0}」：{1}</value></data>
   <data name="MsgStartupCancelled" xml:space="preserve"><value>已取消管理员授权，「{0}」未修改。</value></data>
   <data name="MsgStartupDisabled" xml:space="preserve"><value>已关闭「{0}」开机自启。</value></data>
+  <data name="MsgStartupKeptOff" xml:space="preserve"><value>「{0}」又把自己设成了开机自启，已按你的选择重新关闭。</value></data>
   <data name="MsgStartupEnabled" xml:space="preserve"><value>已开启「{0}」开机自启。</value></data>
   <data name="StartupSourceScheduledTask" xml:space="preserve"><value>计划任务</value></data>
   <data name="StartupSourceMachineStartupFolder" xml:space="preserve"><value>启动文件夹（所有用户）</value></data>

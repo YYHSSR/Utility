@@ -26,6 +26,11 @@ public sealed record AppSettingsState
     public bool PauseGpuPollingOnBattery { get; init; } = true;
     public bool ConfirmGraphicsRecoveryPath { get; init; }
     public string UiLanguage { get; init; } = "zh-CN";
+    /// <summary>
+    /// StableIds of startup entries the user turned off; Utility keeps them off even when the app re-enables itself.
+    /// Null until first seeded from the entries that were already off when this setting was introduced.
+    /// </summary>
+    public IReadOnlyList<string>? KeptOffStartupEntryIds { get; init; }
     public DateTimeOffset LastSavedUtc { get; init; } = DateTimeOffset.UtcNow;
 }
 

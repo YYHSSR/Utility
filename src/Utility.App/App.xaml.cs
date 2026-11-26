@@ -101,7 +101,11 @@ public partial class App : Application
         _showWindowRegistration = ThreadPool.RegisterWaitForSingleObject(_showWindowEvent!,
             (_, _) => Dispatcher.BeginInvoke(() => _tray?.ShowWindow()), null, Timeout.Infinite, executeOnlyOnce: false);
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
-        SessionEnding += (_, _) => _mainViewModel.StopCooling();
+        SessionEnding += (_, _) =>
+        {
+            _mainViewModel.StopCooling();
+            _mainViewModel.EnforceKeptOffStartupEntriesNow();
+        };
         if (startInTray)
         {
             _mainViewModel.SetWindowVisibility(false);

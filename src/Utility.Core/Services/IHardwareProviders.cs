@@ -27,6 +27,10 @@ public interface ISoftwareInventoryProvider
     bool OpenWindowsStartupApps();
     /// <summary>Enables or disables a startup entry the way Task Manager does; elevates only for system-wide entries.</summary>
     Task<OperationResult<bool>> SetStartupEntryEnabledAsync(StartupEntry entry, bool enabled, CancellationToken ct = default);
+    /// <summary>Turns the listed entries off again if something re-enabled them (no elevation, no prompts); returns those switched back off.</summary>
+    Task<IReadOnlyList<StartupEntry>> EnforceDisabledStartupEntriesAsync(IReadOnlyCollection<string> stableIds, CancellationToken ct = default);
+    /// <summary>Calls <paramref name="changed"/> (on a background thread) whenever Run keys or StartupApproved flags change.</summary>
+    IDisposable WatchStartupChanges(Action changed);
 }
 
 /// <summary>PnP driver inventory and local official driver package verifier.</summary>

@@ -81,7 +81,39 @@ public sealed class WindowsSoftwareProvider : ISoftwareInventoryProvider
         var entry = ReadStartupEntries(tasks).FirstOrDefault(e => e.StableId == stableId);
         if (entry is null)
             return OperationResult<bool>.Fail("STARTUP_ENTRY_NOT_FOUND", "Startup entry no longer exists.");
+        return ApplyStartupEntryEnabled(entry, enabled);
+    }
 
+    public Task<IReadOnlyList<StartupEntry>> EnforceDisabledStartupEntriesAsync(IReadOnlyCollection<string> stableIds, CancellationToken ct = default) =>
+        Task.Run(() => EnforceDisabledStartupEntries(stableIds), ct);
+
+    public IDisposable WatchStartupChanges(Action changed) => new StartupRegistryWatcher(changed);
+
+    /// <summary>
+    /// Turns off again every listed entry that is currently enabled (an app may re-enable itself, e.g. Electron's
+    /// setLoginItemSettings rewrites StartupApproved on every launch). Runs without elevation and never prompts:
+    /// entries that need admin rights are left as they are. Returns the entries that were switched back off.
+    /// </summary>
+    public static IReadOnlyList<StartupEntry> EnforceDisabledStartupEntries(IReadOnlyCollection<string> stableIds)
+    {
+        if (stableIds.Count == 0)
+            return [];
+        var ids = stableIds as ISet<string> ?? new HashSet<string>(stableIds, StringComparer.Ordinal);
+        var tasks = ids.Any(id => id.StartsWith("Task:", StringComparison.Ordinal))
+            ? EnumerateScheduledTasksSafe(true, CancellationToken.None) : [];
+        var redisabled = new List<StartupEntry>();
+        foreach (var entry in ReadStartupEntries(tasks))
+        {
+            if (entry.IsEnabled == false || !ids.Contains(entry.StableId))
+                continue;
+            if (ApplyStartupEntryEnabled(entry, false).Success)
+                redisabled.Add(entry);
+        }
+        return redisabled;
+    }
+
+    private static OperationResult<bool> ApplyStartupEntryEnabled(StartupEntry entry, bool enabled)
+    {
         try
         {
             switch (entry.Source)

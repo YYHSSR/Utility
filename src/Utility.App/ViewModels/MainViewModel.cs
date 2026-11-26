@@ -33,6 +33,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private long _lastDetailTick, _lastSensorTick;
     private SystemMetricsInterop.CpuTimeSample? _previousCpu = SystemMetricsInterop.SampleCpuTimes();
     private readonly HashSet<int> _requestedInventoryPages = [];
+    // Startup entries the user turned off and Utility keeps off (see EnforceKeptOffStartupEntriesAsync).
+    private static readonly TimeSpan StartupSweepInterval = TimeSpan.FromMinutes(5);
+    private readonly SemaphoreSlim _startupGuardLock = new(1, 1);
+    private HashSet<string> _keptOffStartupIds = new(StringComparer.Ordinal);
+    private IDisposable? _startupWatcher;
+    private Timer? _startupSweepTimer;
 
     private AppSettingsState _settings = new();
     private LiveThermalSnapshot? _latestThermalSnapshot;
@@ -463,6 +469,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             UpdateSampling();
             _ = RunSafelyAsync(() => RefreshThermalAsync(allowElevation: false));
             _ = RunSafelyAsync(() => LoadSelectedInventoryAsync(SelectedNavIndex));
+            _ = RunSafelyAsync(StartStartupGuardAsync);
         });
     }
 
@@ -1268,13 +1275,131 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
             return false;
 
-        var result = await _software.SetStartupEntryEnabledAsync(row.Entry, enabled, _lifetime.Token);
+        OperationResult<bool> result;
+        await _startupGuardLock.WaitAsync(_lifetime.Token);
+        try
+        {
+            result = await _software.SetStartupEntryEnabledAsync(row.Entry, enabled, _lifetime.Token);
+            // Remember the choice: an entry turned off here stays off, even if its app turns itself back on.
+            if (result.Success && (enabled ? _keptOffStartupIds.Remove(row.Entry.StableId) : _keptOffStartupIds.Add(row.Entry.StableId)))
+                await SaveKeptOffStartupIdsAsync();
+        }
+        finally
+        {
+            _startupGuardLock.Release();
+        }
         StatusMessage = result.Success
             ? Loc.Format(enabled ? "MsgStartupEnabled" : "MsgStartupDisabled", row.Name)
             : result.WasCancelledByUser
                 ? Loc.Format("MsgStartupCancelled", row.Name)
                 : Loc.Format("MsgStartupFailed", row.Name, result.Message);
         return result.Success;
+    }
+
+    /// <summary>
+    /// Loads (or, the first time, seeds) the kept-off list, turns those entries off again if needed, then keeps
+    /// watching: Run/StartupApproved changes are caught at once, scheduled tasks by a periodic sweep.
+    /// </summary>
+    private async Task StartStartupGuardAsync()
+    {
+        await _startupGuardLock.WaitAsync(_lifetime.Token).ConfigureAwait(false);
+        try
+        {
+            if (_settings.KeptOffStartupEntryIds is { } kept)
+            {
+                _keptOffStartupIds = new HashSet<string>(kept, StringComparer.Ordinal);
+            }
+            else
+            {
+                // First run with this feature: apps that are already off (not scheduled tasks) stay off from now on.
+                var entries = await _software.ReadStartupEntriesAsync(_lifetime.Token).ConfigureAwait(false);
+                _keptOffStartupIds = entries
+                    .Where(entry => entry.IsEnabled == false && entry.Source != StartupEntrySource.ScheduledTask)
+                    .Select(entry => entry.StableId)
+                    .ToHashSet(StringComparer.Ordinal);
+                await SaveKeptOffStartupIdsAsync().ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _startupGuardLock.Release();
+        }
+
+        await EnforceKeptOffStartupEntriesAsync().ConfigureAwait(false);
+        if (_disposed)
+            return;
+        _startupWatcher = _software.WatchStartupChanges(() => _ = EnforceKeptOffStartupEntriesAsync());
+        _startupSweepTimer = new Timer(_ => _ = EnforceKeptOffStartupEntriesAsync(), null, StartupSweepInterval, StartupSweepInterval);
+    }
+
+    private Task SaveKeptOffStartupIdsAsync()
+    {
+        var ids = _keptOffStartupIds.Order(StringComparer.Ordinal).ToArray();
+        return UpdateSettingsAsync(settings => settings with { KeptOffStartupEntryIds = ids });
+    }
+
+    /// <summary>Switches kept-off entries back off if an app re-enabled itself; quiet unless it actually did.</summary>
+    private async Task EnforceKeptOffStartupEntriesAsync()
+    {
+        if (_disposed)
+            return;
+        try
+        {
+            IReadOnlyList<StartupEntry> redisabled;
+            await _startupGuardLock.WaitAsync(_lifetime.Token).ConfigureAwait(false);
+            try
+            {
+                if (_keptOffStartupIds.Count == 0)
+                    return;
+                redisabled = await _software.EnforceDisabledStartupEntriesAsync(_keptOffStartupIds.ToArray(), _lifetime.Token)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                _startupGuardLock.Release();
+            }
+
+            if (redisabled.Count == 0 || _disposed)
+                return;
+            var names = string.Join("、", redisabled.Select(entry => entry.Name));
+            await _stateStore.AppendDiagnosticAsync("startup-guard", $"Turned auto-start off again: {names}").ConfigureAwait(false);
+            var refresh = false;
+            await RunOnUiAsync(() =>
+            {
+                StatusMessage = Loc.Format("MsgStartupKeptOff", names);
+                refresh = _requestedInventoryPages.Contains(NavSoftware);
+            }).ConfigureAwait(false);
+            if (refresh)
+                await RefreshSoftwareAsync().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (_disposed)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (!_disposed)
+                _ = _stateStore.AppendDiagnosticAsync("startup-guard", $"Check failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Last check while Windows signs out or shuts down, so a re-enabled entry is off before the next sign-in.</summary>
+    public void EnforceKeptOffStartupEntriesNow()
+    {
+        if (_disposed || !_startupGuardLock.Wait(TimeSpan.FromSeconds(1)))
+            return;
+        try
+        {
+            if (_keptOffStartupIds.Count > 0)
+                _software.EnforceDisabledStartupEntriesAsync(_keptOffStartupIds.ToArray()).Wait(TimeSpan.FromSeconds(3));
+        }
+        catch
+        {
+            // Session is ending; nothing useful to report.
+        }
+        finally
+        {
+            _startupGuardLock.Release();
+        }
     }
 
     private void AddFanChannel()
@@ -1496,6 +1621,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             return;
 
         _disposed = true;
+        _startupSweepTimer?.Dispose();
+        _startupWatcher?.Dispose();
         StopCooling();
         Cleanup.Dispose();
         if (_uninstall.IsValueCreated)

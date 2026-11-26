@@ -431,6 +431,7 @@
   <data name="MsgStartupFailed" xml:space="preserve"><value>Could not change "{0}": {1}</value></data>
   <data name="MsgStartupCancelled" xml:space="preserve"><value>Administrator permission was declined; "{0}" was not changed.</value></data>
   <data name="MsgStartupDisabled" xml:space="preserve"><value>Turned off auto-start for "{0}".</value></data>
+  <data name="MsgStartupKeptOff" xml:space="preserve"><value>"{0}" turned its auto-start back on; Utility switched it off again as you chose.</value></data>
   <data name="MsgStartupEnabled" xml:space="preserve"><value>Turned on auto-start for "{0}".</value></data>
   <data name="StartupSourceScheduledTask" xml:space="preserve"><value>Scheduled task</value></data>
   <data name="StartupSourceMachineStartupFolder" xml:space="preserve"><value>Startup folder (all users)</value></data>
