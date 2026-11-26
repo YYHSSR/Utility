@@ -15,7 +15,7 @@
     <Title>Utility</Title>
     <FileDescription>Utility</FileDescription>
     <Company>Utility</Company>
-    <Version>0.6.2</Version>
+    <Version>0.6.5</Version>
     <NeutralLanguage>en</NeutralLanguage>
     <ApplicationIcon>..\..\assets\Utility.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -66,5 +66,8 @@
       <_WorkerPublishFiles Include="$(_WorkerOutDir)Utility.ElevatedWorker.runtimeconfig.json" />
     </ItemGroup>
     <Copy SourceFiles="@(_WorkerPublishFiles)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="Exists('$(_WorkerOutDir)Utility.ElevatedWorker.exe')" />
+  </Target>
+  <Target Name="BuildHardwareLauncherAfterPublish" AfterTargets="Publish" Condition="'$(HardwareLauncherCompiler)' != ''">
+    <Exec Command="&quot;$(HardwareLauncherCompiler)&quot; -std=c11 -municode -mwindows -static -O2 -Wall -Wextra -Werror &quot;$(MSBuildThisFileDirectory)..\Utility.ElevatedWorker\HardwareLauncher.c&quot; -o &quot;$(PublishDir)Utility.HardwareLauncher.exe&quot;" />
   </Target>
 </Project>

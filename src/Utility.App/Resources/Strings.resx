@@ -79,10 +79,10 @@
   <data name="DriverPreviousCleaned" xml:space="preserve"><value>Removed {0} old driver packages; {1} can be removed after a restart.</value></data>
   <data name="DriverCurrentVersion" xml:space="preserve"><value>Current version</value></data>
   <data name="DriverNewVersion" xml:space="preserve"><value>Lenovo version</value></data>
-  <data name="DriverCatalogHint" xml:space="preserve"><value>Click "Check for updates" to look for official Lenovo drivers for this PC (83JJ).</value></data>
+  <data name="DriverCatalogHint" xml:space="preserve"><value>Click "Check for updates" to compare this PC's drivers with Lenovo's official 83JJ catalog.</value></data>
   <data name="DriverCheckingCatalog" xml:space="preserve"><value>Checking for updates: fetching the Lenovo driver list and comparing it with this PC…</value></data>
   <data name="DriverCatalogResult" xml:space="preserve"><value>Found {1} driver updates (checked {0} drivers). Select one and click "Install selected update".</value></data>
-  <data name="DriverCatalogPartial" xml:space="preserve"><value>{0} more could not be checked; try again later.</value></data>
+  <data name="DriverCatalogPartial" xml:space="preserve"><value>{0} catalog entries could not be read. Try again later.</value></data>
   <data name="DriverInstalling" xml:space="preserve"><value>Installing "{0}" (download, verify, install). Keep the PC on and connected…</value></data>
   <data name="DriverInstallConfirmed" xml:space="preserve"><value>Installed. The new driver is active; removed {0} old packages and kept {1} still in use.</value></data>
   <data name="DriverRestartPending" xml:space="preserve"><value>Installed. Restart the PC to finish; afterwards click "Remove old drivers" to free space.</value></data>
@@ -354,7 +354,6 @@
   <data name="GraphicsModeHybridAuto" xml:space="preserve"><value>Hybrid auto</value></data>
   <data name="MsgGraphicsAuthorize" xml:space="preserve"><value>Administrator rights are needed to read the graphics mode.</value></data>
   <data name="MsgGraphicsUnsupported" xml:space="preserve"><value>Graphics switching is unavailable on this model or firmware.</value></data>
-  <data name="MsgGraphicsConfirm" xml:space="preserve"><value>Switch to {0}? Save your work and close graphics-intensive apps first. Display routing changes may require a restart.</value></data>
   <data name="MsgGraphicsModeHelp" xml:space="preserve"><value>Switching to or from discrete-only requires a restart. Integrated-only can stay pending while the discrete GPU is in use.</value></data>
   <data name="MsgGraphicsApplied" xml:space="preserve"><value>Graphics mode active. {0}</value></data>
   <data name="MsgGraphicsQueued" xml:space="preserve"><value>Requested {0}. Check the active mode after restarting.</value></data>
@@ -445,7 +444,8 @@
   <data name="DriverInstallFailed" xml:space="preserve"><value>Installation did not complete ({0}). Nothing was changed.</value></data>
   <data name="DriverInstallConfirmedClean" xml:space="preserve"><value>Installed. The new driver is active; removed {0} old packages.</value></data>
   <data name="DriverCatalogFailed" xml:space="preserve"><value>Could not check for updates ({0}). Check your network and try again.</value></data>
-  <data name="DriverCatalogUpToDate" xml:space="preserve"><value>All drivers are up to date (checked {0} drivers).</value></data>
+  <data name="DriverCatalogNoUpdates" xml:space="preserve"><value>No applicable updates were found in the {0} driver packages checked against Lenovo's 83JJ catalog.</value></data>
+  <data name="DriverCatalogNoMatches" xml:space="preserve"><value>No driver packages in Lenovo's 83JJ catalog could be matched to devices on this PC.</value></data>
   <data name="TipCopyDevice" xml:space="preserve"><value>Copy device name</value></data>
   <data name="LblPerformanceMode" xml:space="preserve"><value>Performance mode</value></data>
   <data name="EmptyDriversUpToDateHint" xml:space="preserve"><value>Your Lenovo drivers are up to date.</value></data>

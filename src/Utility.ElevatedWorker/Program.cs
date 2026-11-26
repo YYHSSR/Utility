@@ -25,6 +25,28 @@ internal static class Program
             return 5;
         }
 
+        if (args is ["--enable-hardware-task"] or ["--remove-installation-hardware-tasks"])
+        {
+            try
+            {
+                if (args[0] == "--enable-hardware-task")
+                    HardwareAuthorizationTask.Register();
+                else
+                    HardwareAuthorizationTask.RemoveForCurrentInstallation();
+
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(ex.Message);
+                return 5;
+            }
+        }
+
+        var scheduled = args.Length > 0 && args[0] == "--hardware-task";
+        if (scheduled)
+            args = args[1..];
+
         if (args.Length != 6 || args[0] != "--pipe" || args[2] != "--token" || args[4] != "--server-pid" ||
             !args[1].StartsWith("UtilityWorker_", StringComparison.Ordinal) ||
             !Guid.TryParseExact(args[1].AsSpan("UtilityWorker_".Length), "N", out _) ||
@@ -40,7 +62,8 @@ internal static class Program
             await using var pipe = new NamedPipeClientStream(".", args[1], PipeDirection.InOut,
                 PipeOptions.Asynchronous, TokenImpersonationLevel.Identification);
             await pipe.ConnectAsync(timeout.Token).ConfigureAwait(false);
-            if (!ElevatedWorkerClient.IsExpectedServer(pipe, serverPid))
+            var appPath = scheduled ? Path.Combine(AppContext.BaseDirectory, "Utility.exe") : null;
+            if (!ElevatedWorkerClient.IsExpectedServer(pipe, serverPid, appPath))
             {
                 return 5;
             }
@@ -48,7 +71,8 @@ internal static class Program
             using var reader = new StreamReader(pipe, Encoding.UTF8, leaveOpen: true);
             var line = await reader.ReadLineAsync(timeout.Token).ConfigureAwait(false);
             var request = line is null ? null : JsonSerializer.Deserialize<ElevatedRequest>(line, JsonOptions);
-            if (request is null || !string.Equals(request.AuthToken, args[3], StringComparison.Ordinal))
+            if (request is null || !string.Equals(request.AuthToken, args[3], StringComparison.Ordinal) ||
+                (scheduled && !HardwareAuthorizationTask.Allows(request.Operation)))
             {
                 return 5;
             }

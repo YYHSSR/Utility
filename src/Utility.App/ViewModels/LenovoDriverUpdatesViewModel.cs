@@ -75,13 +75,16 @@ public sealed class LenovoDriverUpdatesViewModel : ViewModelBase
         var scan = await _updates.ScanAsync(CancellationToken.None);
         Available = scan.Updates;
         Selected = Available.FirstOrDefault();
-        var text = Available.Count == 0
-            ? Loc.Format("DriverCatalogUpToDate", scan.ComparedPackages)
-            : Loc.Format("DriverCatalogResult", scan.ComparedPackages, Available.Count);
+        string text;
+        if (Available.Count > 0)
+            text = Loc.Format("DriverCatalogResult", scan.ComparedPackages, Available.Count);
+        else if (scan.ComparedPackages == 0)
+            text = Loc.Get("DriverCatalogNoMatches");
+        else
+            text = Loc.Format("DriverCatalogNoUpdates", scan.ComparedPackages);
         if (scan.FailedManifests > 0)
             text += " " + Loc.Format("DriverCatalogPartial", scan.FailedManifests);
-        // Updates found or something could not be checked → draw attention; otherwise a calm "all good".
-        SetStatus(Available.Count > 0 || scan.FailedManifests > 0 ? "warn" : "ok", text);
+        SetStatus(Available.Count > 0 || scan.FailedManifests > 0 || scan.ComparedPackages == 0 ? "warn" : "ok", text);
     }
 
     private async Task CleanupAsync()

@@ -9,6 +9,7 @@ namespace Utility.Platform.Native;
 /// <summary>Authenticode signature verification (WinVerifyTrust), SHA-256 hashing, and PE inspection.</summary>
 public static class WinTrustInterop
 {
+    internal const int TrustENoSignature = unchecked((int)0x800B0100);
     private static readonly Guid WintrustActionGenericVerifyV2 = new("00AAC56B-CD44-11d0-8CC2-00C04FC295EE");
     private const uint WtdUiNone = 2;
     private const uint WtdRevokeWholeChain = 1;
@@ -82,6 +83,14 @@ public static class WinTrustInterop
 
     public static (bool IsValid, string Detail) VerifyAuthenticode(string filePath)
     {
+        var status = VerifyAuthenticodeStatus(filePath);
+        return status == 0
+            ? (true, "TRUST_E_OK (0x00000000)")
+            : (false, $"WinVerifyTrust returned 0x{status:X8}");
+    }
+
+    internal static int VerifyAuthenticodeStatus(string filePath)
+    {
         var pFilePath = Marshal.StringToCoTaskMemUni(filePath);
         var fileInfo = new WinTrustFileInfo
         {
@@ -109,9 +118,7 @@ public static class WinTrustInterop
             data.dwStateAction = WtdStateActionClose;
             WinVerifyTrust(IntPtr.Zero, WintrustActionGenericVerifyV2, ref data);
 
-            return status == 0
-                ? (true, "TRUST_E_OK (0x00000000)")
-                : (false, $"WinVerifyTrust returned 0x{status:X8}");
+            return status;
         }
         finally
         {
@@ -120,19 +127,30 @@ public static class WinTrustInterop
         }
     }
 
+    internal static string? ReadSignerSha256(string filePath)
+    {
+        using var cert = ReadEmbeddedSigner(filePath);
+        return cert?.GetCertHashString(HashAlgorithmName.SHA256);
+    }
+
     private static (string? Subject, string? Issuer) ReadSignerInfo(string filePath)
+    {
+        using var cert = ReadEmbeddedSigner(filePath);
+        return (cert?.Subject, cert?.Issuer);
+    }
+
+    private static X509Certificate? ReadEmbeddedSigner(string filePath)
     {
         try
         {
             // Inspect the signer embedded in a PE; LoadCertificateFromFile expects a certificate file.
 #pragma warning disable SYSLIB0057
-            using var cert = X509Certificate.CreateFromSignedFile(filePath);
+            return X509Certificate.CreateFromSignedFile(filePath);
 #pragma warning restore SYSLIB0057
-            return (cert.Subject, cert.Issuer);
         }
         catch
         {
-            return (null, null);
+            return null;
         }
     }
 

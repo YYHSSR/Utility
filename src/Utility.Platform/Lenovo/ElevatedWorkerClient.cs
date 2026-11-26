@@ -56,7 +56,8 @@ public sealed class ElevatedWorkerClient
     private async Task<ElevatedResponse> ExecuteInternalAsync(ElevatedRequest templateRequest, CancellationToken ct,
         Func<StreamReader, StreamWriter, Task<ElevatedResponse>>? monitor = null)
     {
-        var workerPath = Path.Combine(AppContext.BaseDirectory, "Utility.ElevatedWorker.exe");
+        var directory = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
+        var workerPath = Path.Combine(directory, "Utility.ElevatedWorker.exe");
         if (!Enum.IsDefined(templateRequest.Operation))
         {
             return new ElevatedResponse { ErrorCode = "UNKNOWN_OPERATION", Message = "Unsupported worker operation." };
@@ -70,6 +71,26 @@ public sealed class ElevatedWorkerClient
                 ErrorCode = "WORKER_NOT_FOUND",
                 Message = $"Trusted elevated worker binary was not found at '{workerPath}'."
             };
+        }
+
+        try
+        {
+            if (!ElevatedWorkerInstallation.IsProtected(directory))
+                return new ElevatedResponse
+                {
+                    ErrorCode = "WORKER_UNSAFE_LOCATION",
+                    Message = "Install the complete Utility release under Program Files with administrator-only write access to use elevated features."
+                };
+            if (!ElevatedWorkerInstallation.HasConsistentSignature(directory, workerPath))
+                return new ElevatedResponse
+                {
+                    ErrorCode = "WORKER_SIGNATURE_INVALID",
+                    Message = "Utility and its elevated helper must have valid signatures from the same publisher when either executable is signed."
+                };
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            return new ElevatedResponse { ErrorCode = "WORKER_VERIFICATION_FAILED", Message = ex.Message };
         }
 
         var pipeName = $"UtilityWorker_{Guid.NewGuid():N}";
@@ -87,17 +108,23 @@ public sealed class ElevatedWorkerClient
             pipeSecurity);
 
         Process? proc = null;
+        bool scheduled;
         try
         {
-            proc = Process.Start(new ProcessStartInfo
+            scheduled = HardwareAuthorizationTask.Allows(templateRequest.Operation) &&
+                        HardwareAuthorizationTask.TryStart(workerPath, pipeName, authToken);
+            if (!scheduled)
             {
-                FileName = workerPath,
-                Arguments = $"--pipe {pipeName} --token {authToken} --server-pid {Environment.ProcessId}",
-                UseShellExecute = true,
-                Verb = "runas",
-                WorkingDirectory = AppContext.BaseDirectory,
-                WindowStyle = ProcessWindowStyle.Hidden
-            });
+                proc = Process.Start(new ProcessStartInfo
+                {
+                    FileName = workerPath,
+                    Arguments = $"--pipe {pipeName} --token {authToken} --server-pid {Environment.ProcessId}",
+                    UseShellExecute = true,
+                    Verb = "runas",
+                    WorkingDirectory = directory,
+                    WindowStyle = ProcessWindowStyle.Hidden
+                });
+            }
         }
 
         catch (Win32Exception ex) when (ex.NativeErrorCode == ErrorCancelled)
@@ -120,7 +147,7 @@ public sealed class ElevatedWorkerClient
             };
         }
 
-        if (proc is null)
+        if (!scheduled && proc is null)
         {
             return new ElevatedResponse { ErrorCode = "ELEVATION_START_FAILED", Message = "Windows did not start the probe worker." };
         }
@@ -134,7 +161,8 @@ public sealed class ElevatedWorkerClient
         try
         {
             await pipeServer.WaitForConnectionAsync(timeoutCts.Token).ConfigureAwait(false);
-            if (!GetNamedPipeClientProcessId(pipeServer.SafePipeHandle, out var clientPid) || clientPid != (uint)proc.Id)
+            if (!GetNamedPipeClientProcessId(pipeServer.SafePipeHandle, out var clientPid) ||
+                (scheduled ? !ProcessHasImage(clientPid, workerPath) : clientPid != (uint)proc!.Id))
             {
                 return new ElevatedResponse { ErrorCode = "UNEXPECTED_WORKER", Message = "The pipe client did not match the launched worker." };
             }
@@ -258,8 +286,29 @@ public sealed class ElevatedWorkerClient
         return security;
     }
 
-    public static bool IsExpectedServer(NamedPipeClientStream pipe, uint expectedProcessId) =>
-        GetNamedPipeServerProcessId(pipe.SafePipeHandle, out var processId) && processId == expectedProcessId;
+    public static bool IsExpectedServer(NamedPipeClientStream pipe, uint expectedProcessId, string? appPath = null) =>
+        GetNamedPipeServerProcessId(pipe.SafePipeHandle, out var processId) && processId == expectedProcessId &&
+        (appPath is null || ProcessHasImage(processId, appPath));
+
+    private static bool ProcessHasImage(uint processId, string expectedPath)
+    {
+        const uint queryLimitedInformation = 0x1000;
+        using var process = OpenProcess(queryLimitedInformation, false, processId);
+        if (process.IsInvalid)
+            return false;
+
+        var image = new StringBuilder(32768);
+        var length = (uint)image.Capacity;
+        return QueryFullProcessImageName(process, 0, image, ref length) &&
+               string.Equals(image.ToString(), expectedPath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern SafeProcessHandle OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint processId);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool QueryFullProcessImageName(SafeProcessHandle process, uint flags, StringBuilder image, ref uint length);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

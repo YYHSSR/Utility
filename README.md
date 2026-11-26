@@ -12,7 +12,7 @@ C# · WPF · .NET 10 · 无后台服务 · 无内核驱动 · 按需提权</p>
 [![Platform](https://img.shields.io/badge/platform-Windows%2011%20x64-0078D4?style=flat-square&logo=windows11&logoColor=white)](https://github.com/YYHSSR/Utility)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![WPF](https://img.shields.io/badge/UI-WPF-68217A?style=flat-square)](https://github.com/YYHSSR/Utility)
-[![Version](https://img.shields.io/badge/version-0.6.2-2EA043?style=flat-square)](https://github.com/YYHSSR/Utility)
+[![Version](https://img.shields.io/badge/version-0.6.5-2EA043?style=flat-square)](https://github.com/YYHSSR/Utility/releases/latest)
 [![License](https://img.shields.io/badge/license-Non--Commercial%20%7C%20ShareAlike-8B5CF6?style=flat-square)](LICENSE)
 
 [功能](#功能) · [快速开始](#快速开始) · [安全设计](#安全设计) · [构建](#构建与测试) · [许可证](#许可证) · [贡献者](CONTRIBUTORS.md)
@@ -58,11 +58,17 @@ Utility 是个人项目，与 Lenovo / 联想、NVIDIA 无隶属或背书关系�
 
 ## 快速开始
 
-### 方式一：下载现成构建
+### 方式一：下载 Windows 安装包
 
-前往 [Releases](https://github.com/YYHSSR/Utility/releases) 下载最新的 `win-x64` 包，解压后运行 `Utility.exe`。框架依赖包需要安装 .NET 10 Windows Desktop Runtime。
+前往 [GitHub Releases](https://github.com/YYHSSR/Utility/releases/latest) 下载 `Utility-0.6.5-win-x64-Setup.exe`。双击安装后，从开始菜单打开 Utility。安装包包含 .NET 10 Windows Desktop Runtime。
 
-> 如果 Releases 暂时没有构建，请使用下面的方式二。
+程序安装在 `%ProgramFiles%\YYHSSR\Utility`。升级时运行新版安装包，已有配置会继续从 `%LOCALAPPDATA%\Utility` 读取。下载页提供安装包的 SHA-256 校验文件。
+
+在当前管理员账户下，可以从管理员 PowerShell 运行以下命令，一次性授权日常的功耗、风扇和显卡控制。授权记录由任务计划程序管理，限定当前账户和 Utility 的硬件助手。
+
+```powershell
+& "$env:ProgramFiles\YYHSSR\Utility\Utility.ElevatedWorker.exe" --enable-hardware-task
+```
 
 ### 方式二：从源码构建
 
@@ -92,7 +98,7 @@ dotnet publish .\src\Utility.App\Utility.App.csproj `
 | 项目 | 要求 |
 |:---|:---|
 | 系统 | Windows 11 x64（当前验证环境） |
-| 运行时 | .NET 10 Windows Desktop Runtime `10.0.15` x64（框架依赖构建） |
+| 运行时 | 安装包自带 .NET 10 Windows Desktop Runtime。源码的框架依赖构建需要单独安装它 |
 | 设备 | Lenovo Legion Y7000 IRX9（`83JJ`），BIOS `PTCN18WW`（厂商写入） |
 | 权限 | 普通用户启动；写入操作按需触发 UAC |
 | 其他 | 无需安装服务或驱动；关闭主窗口后默认驻留托盘 |
@@ -112,7 +118,7 @@ dotnet publish .\src\Utility.App\Utility.App.csproj `
 
 | 原则 | 实现 |
 |:---|:---|
-| **最小权限** | 主程序始终以普通用户运行；需要特权时，仅通过独立的 `Utility.ElevatedWorker.exe` 请求 UAC。 |
+| **最小权限** | 主程序以普通用户运行。特权操作由独立助手执行，支持针对当前管理员账户单独授权日常硬件控制。 |
 | **受限提权通道** | ACL 限制的命名管道、双方进程 ID 校验、一次性 token，并排除网络客户端。 |
 | **写入可逆** | 先读原值，只写差异字段，完成后整表回读；失败回滚，中断操作通过 journal 在下次启动时提示恢复。 |
 | **目标锁定** | 性能、风扇、显卡与养护模式写入仅对 `83JJ` + `PTCN18WW` 开放，避免误刷其他机型。 |
@@ -150,7 +156,8 @@ flowchart TB
 | `tests/Utility.Tests/` | xUnit 测试与模拟硬件提供者 |
 | `docs/` | 架构说明与目标机能力报告 |
 | `assets/` | 图标源文件与多尺寸 `.ico` |
-| `scripts/` | 图标生成脚本 |
+| `installer/` | Inno Setup 安装器定义 |
+| `scripts/` | 安装包构建与图标生成脚本 |
 
 ## 构建与测试
 
@@ -174,6 +181,16 @@ dotnet publish .\src\Utility.App\Utility.App.csproj `
   -o .\publish\win-x64
 ```
 
+### 构建 Windows 安装包
+
+构建电脑需要 .NET 10 SDK、Inno Setup 7 和 MinGW-w64 x64 GCC。在仓库根目录运行，并按实际安装位置填写两个编译器路径。
+
+```powershell
+.\scripts\Build-Installer.ps1 -InnoCompiler 'C:\Tools\Inno Setup\ISCC.exe' -HardwareLauncherCompiler 'C:\msys64\ucrt64\bin\gcc.exe'
+```
+
+安装包和 SHA-256 校验文件输出到 `publish\`。
+
 ### 只读诊断导出
 
 需要在不改动机器状态的前提下收集信息时：
@@ -187,7 +204,7 @@ dotnet publish .\src\Utility.App\Utility.App.csproj `
 ### 数据与卸载
 
 - 设置、日志和操作记录位于 `%LOCALAPPDATA%\Utility\`。
-- 退出 Utility 后，删除程序目录和上述数据目录即可完成清理。
+- 在 Windows 的「设置 → 应用 → 已安装的应用」中卸载 Utility。卸载后配置和操作记录仍保留在用户目录，确认不再使用时可手动删除。
 - 项目不包含账号系统或自建遥测。驱动检测使用公开的联想型号目录，硬件 ID 和版本比对在本机完成。
 
 ## 常见问题

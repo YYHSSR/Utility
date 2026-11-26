@@ -1210,7 +1210,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             return;
         var modeName = GraphicsOptionName(option.Mode);
 
-        // Standard users cannot read the current mode; read it with elevation now (one UAC prompt).
+        // Some firmware requires the helper to verify the current route before applying a change.
         if (_graphicsSnapshot?.IsVerifiedLiveRead != true)
         {
             await RefreshGraphicsAsync(allowElevation: true);
@@ -1222,10 +1222,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 return;
             }
         }
-
-        if (MessageBox.Show(Application.Current.MainWindow, Loc.Format("MsgGraphicsConfirm", modeName),
-                Loc.Get("GraphicsHeader"), MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
-            return;
 
         await RunQuickHardwareAsync(async () =>
         {
