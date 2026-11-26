@@ -31,6 +31,7 @@
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <CheckBox IsChecked="{Binding Selected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          IsEnabled="{Binding CanSelect}"
                                           HorizontalAlignment="Center" VerticalAlignment="Center"
                                           AutomationProperties.Name="{Binding Path}" />
                             </DataTemplate>
@@ -45,6 +46,9 @@
 
         <DockPanel Grid.Row="3" Margin="0,14,0,0" LastChildFill="False">
             <Button x:Name="Rescan" DockPanel.Dock="Left" Content="{loc:Tr CleanupScanLeftovers}" Click="OnRescan" />
+            <CheckBox x:Name="IncludeUserData" DockPanel.Dock="Left" Margin="12,0,0,0" VerticalAlignment="Center"
+                      Content="{loc:Tr CleanupIncludeAppData}" IsChecked="True" Checked="OnUserDataSelectionChanged"
+                      Unchecked="OnUserDataSelectionChanged" />
             <Button x:Name="CloseButton" DockPanel.Dock="Right" Content="{loc:Tr CleanupCloseReview}"
                     IsCancel="True" />
             <Button x:Name="Clean" DockPanel.Dock="Right" Margin="0,0,8,0" Content="{loc:Tr CleanupDeleteSelected}"

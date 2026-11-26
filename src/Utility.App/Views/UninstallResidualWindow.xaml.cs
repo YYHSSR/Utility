@@ -14,6 +14,7 @@ public partial class UninstallResidualWindow : Window
     private CancellationTokenSource? _scan;
     private bool _closed;
     private bool _removing;
+    private ResidualCleanupStatus _cleanupStatus = ResidualCleanupStatus.ReviewOnly;
     private CleanupItemRow[] _rows = [];
 
     internal UninstallResidualWindow(UninstallResidualService scanner, UninstallTarget target, bool restartRequired)
@@ -55,11 +56,22 @@ public partial class UninstallResidualWindow : Window
             if (_closed)
                 return;
 
-            var rows = result.Items.Select(CleanupItemRow.ForResidual).ToArray();
-            foreach (var row in rows)
-                row.Selected = true;
+            _cleanupStatus = result.Status;
+            var canClean = _cleanupStatus != ResidualCleanupStatus.ReviewOnly;
+            var rows = result.Items.Select(item => CleanupItemRow.ForResidual(item, canClean)).ToArray();
+            if (canClean)
+            {
+                foreach (var row in rows)
+                    row.Selected = !row.Residual!.ContainsUserData || IncludeUserData.IsChecked == true;
+            }
             ShowRows(rows);
-            ScanStatus.Text = Loc.Format("CleanupResidualsFound", _target.App.DisplayName, rows.Length) +
+            var statusNote = result.Status switch
+            {
+                ResidualCleanupStatus.ReviewOnly => " " + Loc.Get("CleanupResidualReviewOnly"),
+                ResidualCleanupStatus.StaleRegistration => " " + Loc.Get("CleanupStaleRegistration"),
+                _ => string.Empty
+            };
+            ScanStatus.Text = Loc.Format("CleanupResidualsFound", _target.App.DisplayName, rows.Length) + statusNote +
                 (result.Limited ? " " + Loc.Get("CleanupResidualLimit") : string.Empty) +
                 (_restartRequired ? " " + Loc.Get("CleanupRestartRequired") : string.Empty);
         }
@@ -75,6 +87,14 @@ public partial class UninstallResidualWindow : Window
             if (!_closed)
                 SetBusy(false);
         }
+    }
+
+    private void OnUserDataSelectionChanged(object sender, RoutedEventArgs e)
+    {
+        if (_cleanupStatus == ResidualCleanupStatus.ReviewOnly)
+            return;
+        foreach (var row in _rows.Where(row => row.Residual!.ContainsUserData))
+            row.Selected = IncludeUserData.IsChecked == true;
     }
 
     private async void OnClean(object sender, RoutedEventArgs e)
@@ -123,7 +143,9 @@ public partial class UninstallResidualWindow : Window
     {
         Progress.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
         Rescan.IsEnabled = Rows.IsEnabled = !busy;
-        Clean.IsEnabled = !busy && _rows.Length > 0;
+        var canClean = !busy && _cleanupStatus != ResidualCleanupStatus.ReviewOnly;
+        Clean.IsEnabled = canClean && _rows.Length > 0;
+        IncludeUserData.IsEnabled = canClean && _rows.Any(row => row.Residual!.ContainsUserData);
         CloseButton.IsEnabled = !_removing;
     }
 }

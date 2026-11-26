@@ -16,12 +16,15 @@ public sealed record RegistryResidual(RegistryHive Hive, RegistryView View, stri
 }
 
 public sealed record AppResidual(ScannedFile? File, RegistryResidual? Registry, string Evidence,
-    string? EmptyDirectory = null, string? DirectoryRoot = null, bool EmptyDirectoryTree = false)
+    string? EmptyDirectory = null, string? DirectoryRoot = null, bool EmptyDirectoryTree = false,
+    bool ContainsUserData = false)
 {
     public string Path => File?.Path ?? EmptyDirectory ?? Registry!.DisplayPath;
 }
 
-public sealed record ResidualScanResult(IReadOnlyList<AppResidual> Items, bool Limited);
+public enum ResidualCleanupStatus { Ready, ReviewOnly, StaleRegistration }
+
+public sealed record ResidualScanResult(IReadOnlyList<AppResidual> Items, bool Limited, ResidualCleanupStatus Status);
 
 public sealed partial class UninstallResidualService(WindowsUninstallService uninstall)
 {
@@ -36,12 +39,21 @@ public sealed partial class UninstallResidualService(WindowsUninstallService uni
         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
         Path.Combine(Local, "Programs")
     ];
+    private static readonly string Profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     private static readonly string[] AppDataRoots = [Local, Roaming, Common];
+    private static readonly string[] ProfileDataRoots =
+    [
+        Path.Combine(Profile, ".config"),
+        Path.Combine(Profile, ".cache"),
+        Path.Combine(Profile, ".local", "share"),
+        Path.Combine(Profile, ".local", "state")
+    ];
     private static readonly string LastUninstallPath = Path.Combine(Local, "Utility", "LastUninstall.json");
     private static readonly string[] SharedNames =
     [
         "windows", "microsoft", "lenovo", "system", "programs", "packages",
-        "common", "commonfiles", "resources", "downloads", "utilities", "utility"
+        "common", "commonfiles", "resources", "downloads", "utilities", "utility", "appdata", "temp",
+        "documents", "desktop", "squirreltemp", "programdata", "public", "shared"
     ];
 
     public UninstallTarget? LoadLastUninstall()
@@ -77,59 +89,67 @@ public sealed partial class UninstallResidualService(WindowsUninstallService uni
         }
     }
 
-    public async Task<ResidualScanResult> ScanAsync(UninstallTarget target, CancellationToken ct)
-    {
-        if (!await uninstall.IsUninstalledAsync(target, ct).ConfigureAwait(false))
-            throw new InvalidOperationException("Windows still lists this app. Finish uninstalling it before scanning leftovers.");
-
-        return await Task.Run(() => Scan(target, ct), ct).ConfigureAwait(false);
-    }
+    public Task<ResidualScanResult> ScanAsync(UninstallTarget target, CancellationToken ct) =>
+        Task.Run(() => Scan(target, ct), ct);
 
     public Task<UninstallTarget> CaptureAsync(UninstallTarget target, CancellationToken ct) =>
         Task.Run(() =>
         {
+            var captured = target;
             try
             {
-                if (GetFootprints(target).InstallPath is not { } installPath)
+                var footprints = GetFootprints(target);
+                if (footprints.InstallPath is not { } installPath)
                     return target;
                 var classes = ReadOwnedClasses(target, installPath, ct).Take(128).ToArray();
-                return target with { ResidualClasses = classes };
+                captured = target with { ResidualClasses = classes };
+                return captured with
+                {
+                    DesktopEvidence = CaptureDesktopEvidence(captured, installPath, footprints.ProductNames, ct)
+                };
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
             {
                 // A registry read failure should not prevent the app's own uninstaller from running.
-                return target;
+                return captured;
             }
         }, ct);
 
-    public async Task<CleanupBatchResult> RemoveAsync(UninstallTarget target, IReadOnlyList<AppResidual> selected)
-    {
-        if (!await uninstall.IsUninstalledAsync(target, CancellationToken.None).ConfigureAwait(false))
-            throw new InvalidOperationException("The app is installed again. Scan after uninstalling it.");
+    public Task<CleanupBatchResult> RemoveAsync(UninstallTarget target, IReadOnlyList<AppResidual> selected) =>
+        Task.Run(() => Remove(target, selected));
 
-        return await Task.Run(() => Remove(target, selected)).ConfigureAwait(false);
-    }
-
-    private static ResidualScanResult Scan(UninstallTarget target, CancellationToken ct)
+    private ResidualScanResult Scan(UninstallTarget target, CancellationToken ct)
     {
         var footprints = GetFootprints(target);
+        var (status, staleRegistration) = GetCleanupStatus(target, footprints.InstallPath, ct);
+        if (status == ResidualCleanupStatus.ReviewOnly && target.PackageName is not null)
+            return new ResidualScanResult([], false, status);
+
         var items = new List<AppResidual>();
         var locations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var limited = false;
+        if (staleRegistration is not null)
+        {
+            var item = new AppResidual(null, staleRegistration, "StaleUninstallRegistration");
+            items.Add(item);
+            locations.Add(item.Path);
+        }
         if (footprints.InstallPath is { } sandboxInstallPath)
         {
             foreach (var sandbox in ScanEmptySandboxes(sandboxInstallPath, ct))
                 AddFileSystemItem(sandbox);
         }
-        foreach (var folder in footprints.Folders)
+        foreach (var folder in footprints.Folders.OrderBy(folder => folder.ContainsUserData))
         {
             foreach (var file in DiskCleanupService.WalkFiles(folder.Path, _ => limited, ct, directory =>
             {
                 if (IsEmptyDirectory(directory))
-                    AddFileSystemItem(new(null, null, "EmptyDirectory", directory, folder.Path));
+                    AddFileSystemItem(new(null, null, folder.ContainsUserData ? folder.Evidence : "EmptyDirectory", directory, folder.Path,
+                        ContainsUserData: folder.ContainsUserData));
             }))
             {
-                AddFileSystemItem(new(file, null, folder.Evidence, DirectoryRoot: folder.Path));
+                AddFileSystemItem(new(file, null, folder.Evidence, DirectoryRoot: folder.Path,
+                    ContainsUserData: folder.ContainsUserData));
                 if (limited)
                     break;
             }
@@ -138,7 +158,7 @@ public sealed partial class UninstallResidualService(WindowsUninstallService uni
         }
         if (!limited && footprints.InstallPath is { } shortcutInstallPath)
         {
-            foreach (var shortcut in ScanShortcuts(shortcutInstallPath, footprints.ProductNames, ct))
+            foreach (var (shortcut, _) in ScanShortcuts(shortcutInstallPath, footprints.ProductNames, ct))
             {
                 AddFileSystemItem(shortcut);
                 if (limited)
@@ -251,13 +271,16 @@ public sealed partial class UninstallResidualService(WindowsUninstallService uni
                     items.Add(residual);
             }
         }
-        return new ResidualScanResult(items, limited);
+        return new ResidualScanResult(items, limited, status);
     }
 
-    private static CleanupBatchResult Remove(UninstallTarget target, IReadOnlyList<AppResidual> selected)
+    private CleanupBatchResult Remove(UninstallTarget target, IReadOnlyList<AppResidual> selected)
     {
         // Recompute paths from the original app identity and compare hashes before writing any registry changes.
-        var current = Scan(target, CancellationToken.None).Items.ToHashSet();
+        var scan = Scan(target, CancellationToken.None);
+        if (scan.Status == ResidualCleanupStatus.ReviewOnly)
+            throw new InvalidOperationException("The app's removal can no longer be verified. Scan again before cleaning.");
+        var current = scan.Items.ToHashSet();
         var removed = new List<string>();
         var errors = new List<string>();
         var prune = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -409,7 +432,8 @@ public sealed partial class UninstallResidualService(WindowsUninstallService uni
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }
     }
 
-    private static IEnumerable<AppResidual> ScanShortcuts(string installPath, string[] names, CancellationToken ct)
+    private static IEnumerable<(AppResidual Item, string? Destination)> ScanShortcuts(
+        string installPath, string[] names, CancellationToken ct)
     {
         var roots = new[]
         {
@@ -429,7 +453,7 @@ public sealed partial class UninstallResidualService(WindowsUninstallService uni
             {
                 var appFolders = names.Select(name => Path.Combine(root, name)).ToArray();
                 foreach (var folder in appFolders.Where(IsEmptyDirectory))
-                    yield return new(null, null, "EmptyDirectory", folder, folder);
+                    yield return (new(null, null, "EmptyDirectory", folder, folder), null);
                 foreach (var file in DiskCleanupService.WalkFiles(root,
                              folder => !recursive && !string.Equals(folder, root, StringComparison.OrdinalIgnoreCase), ct))
                 {
@@ -438,7 +462,7 @@ public sealed partial class UninstallResidualService(WindowsUninstallService uni
                         !DiskCleanupService.IsChild(destination, installPath))
                         continue;
                     var appFolder = appFolders.FirstOrDefault(folder => DiskCleanupService.IsChild(file.Path, folder));
-                    yield return new(file, null, "InstallShortcut", DirectoryRoot: appFolder);
+                    yield return (new(file, null, "InstallShortcut", DirectoryRoot: appFolder), destination);
                 }
             }
         }
@@ -541,19 +565,22 @@ public sealed partial class UninstallResidualService(WindowsUninstallService uni
         }
     }
 
-    private static (IReadOnlyList<(string Path, string Evidence)> Folders, string[] ProductNames,
+    private sealed record ResidualFolder(string Path, string Evidence, bool ContainsUserData = false);
+
+    private static (IReadOnlyList<ResidualFolder> Folders, string[] ProductNames,
         string? Publisher, string? InstallPath) GetFootprints(UninstallTarget target)
     {
-        var folders = new List<(string Path, string Evidence)>();
+        var folders = new List<ResidualFolder>();
+        var addedFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (target.PackageName is not null && SafeSegment(target.App.PackageFamilyName) is { } family)
         {
-            folders.Add((Path.Combine(Local, "Packages", family), "PackageData"));
+            folders.Add(new(Path.Combine(Local, "Packages", family), "PackageData", ContainsUserData: true));
             return (folders, new[] { family, target.PackageName }.Where(name => SafeSegment(name) is not null).ToArray(), null, null);
         }
 
         var apps = WindowsSoftwareProvider.ReadInstalledApps(includeStoreApps: false)
             .Where(app => !app.StableId.Equals(target.App.StableId, StringComparison.OrdinalIgnoreCase)).ToArray();
-        var otherNames = apps.SelectMany(app => ProductNames(app).Select(Normalize).Append(Normalize(app.Publisher)))
+        var otherNames = apps.SelectMany(AppNamesInUse).Select(Normalize)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var publisher = SafeSegment(target.App.Publisher);
         var names = ProductNames(target.App).Where(name => !otherNames.Contains(Normalize(name)))
@@ -562,9 +589,7 @@ public sealed partial class UninstallResidualService(WindowsUninstallService uni
 
         string? installPath = null;
         var location = NormalizePath(registration?.InstallLocation);
-        var uninstaller = registration?.Command is { } command
-            ? WindowsUninstallService.SplitExecutable(Environment.ExpandEnvironmentVariables(command))?.Path
-            : null;
+        var uninstaller = GetCommandExecutable(registration?.Command);
         if (location is null && uninstaller is not null &&
             Path.GetFileName(uninstaller).StartsWith("unins", StringComparison.OrdinalIgnoreCase))
             location = NormalizePath(Path.GetDirectoryName(uninstaller));
@@ -576,25 +601,31 @@ public sealed partial class UninstallResidualService(WindowsUninstallService uni
                 : IsCustomInstallation(location, installName)))
         {
             installPath = location;
-            folders.Add((location, "RegisteredInstallationFolder"));
+            addedFolders.Add(location);
+            folders.Add(new(location, "RegisteredInstallationFolder"));
             if (!otherNames.Contains(Normalize(installName)))
                 names.Add(installName);
         }
 
+        var normalizedNames = names.Select(Normalize).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var root in AppDataRoots)
+        {
+            AddMatchingFolders(root, "ExactProductFolder", containsUserData: true);
+            if (publisher is not null)
+                AddMatchingFolders(Path.Combine(root, publisher), "ExactProductFolder", containsUserData: true);
+        }
+        foreach (var root in ProfileDataRoots)
+            AddMatchingFolders(root, "UserProfileData", containsUserData: true);
+
+        var temp = installPath is null ? null : NormalizePath(Path.GetTempPath());
+        if (temp is not null)
+            AddMatchingFolders(temp, "UserProfileData", containsUserData: true);
         foreach (var name in names)
         {
-            foreach (var root in AppDataRoots)
-            {
-                AddFolder(Path.Combine(root, name), "ExactProductFolder");
-                if (publisher is not null)
-                    AddFolder(Path.Combine(root, publisher, name), "ExactProductFolder");
-            }
             if (installPath is not null)
-            {
-                AddFolder(Path.Combine(Local, name + "-updater"), "ProductUpdateCache");
-                if (NormalizePath(Path.GetTempPath()) is { } temp)
-                    AddFolder(Path.Combine(temp, name + "-bundle"), "ProductUpdateCache");
-            }
+                AddFolder(Path.Combine(Local, name + "-updater"), "ProductUpdateCache", containsUserData: false);
+            if (temp is not null)
+                AddFolder(Path.Combine(temp, name + "-bundle"), "ProductUpdateCache", containsUserData: false);
         }
         return (folders, names.ToArray(), publisher, installPath);
 
@@ -602,26 +633,57 @@ public sealed partial class UninstallResidualService(WindowsUninstallService uni
         {
             var drive = Path.GetPathRoot(path)!;
             var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-            var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            var userProfiles = Path.GetDirectoryName(profile);
-            return names.Any(product => Normalize(product) == Normalize(name)) &&
+            var userProfiles = Path.GetDirectoryName(Profile);
+            var normalizedName = Normalize(name);
+            // Per-user installers can use the registered product ID as the direct LocalAppData folder name.
+            var matchesIdentity = names.Any(product => Normalize(product) == normalizedName) ||
+                (target.App.Scope == InstallScope.CurrentUser &&
+                 string.Equals(Path.GetDirectoryName(path), Local, StringComparison.OrdinalIgnoreCase) &&
+                 SafeSegment(registration?.RegistryKeyName) is { } keyName && Normalize(keyName) == normalizedName &&
+                 !otherNames.Contains(normalizedName));
+            return matchesIdentity &&
                 RegisteredExeIsInside(registration?.Command, path) &&
                 !DiskCleanupService.IsInOrEqual(path, windows) &&
                 !DiskCleanupService.IsInOrEqual(path, Path.Combine(drive, "$Recycle.Bin")) &&
                 !DiskCleanupService.IsInOrEqual(path, Path.Combine(drive, "System Volume Information")) &&
                 (string.IsNullOrEmpty(userProfiles) || !DiskCleanupService.IsInOrEqual(path, userProfiles) ||
-                    DiskCleanupService.IsChild(path, profile));
+                    DiskCleanupService.IsChild(path, Profile));
         }
 
         bool IsShared(string path) => apps.Any(app =>
             Overlaps(path, NormalizePath(app.DesktopRegistration?.InstallLocation)) ||
             RegisteredExeIsInside(app.DesktopRegistration?.Command, path));
 
-        void AddFolder(string path, string evidence)
+        void AddMatchingFolders(string root, string evidence, bool containsUserData)
         {
-            if (!otherNames.Contains(Normalize(Path.GetFileName(path))) && !IsShared(path))
-                folders.Add((path, evidence));
+            if (normalizedNames.Count == 0)
+                return;
+            foreach (var folder in SafeChildDirectories(root))
+            {
+                if (SafeSegment(Path.GetFileName(folder)) is { } name && normalizedNames.Contains(Normalize(name)))
+                    AddFolder(folder, evidence, containsUserData);
+            }
         }
+
+        void AddFolder(string path, string evidence, bool containsUserData)
+        {
+            if (!addedFolders.Contains(path) && !otherNames.Contains(Normalize(Path.GetFileName(path))) && !IsShared(path))
+            {
+                addedFolders.Add(path);
+                folders.Add(new(path, evidence, containsUserData));
+            }
+        }
+    }
+
+    private static IEnumerable<string> AppNamesInUse(InstalledAppEntry app)
+    {
+        foreach (var name in ProductNames(app))
+            yield return name;
+        yield return app.Publisher;
+
+        if (app.DesktopRegistration is { } registration && NormalizePath(registration.InstallLocation) is { } root &&
+            RegisteredExeIsInside(registration.Command, root) && SafeSegment(Path.GetFileName(root)) is { } installName)
+            yield return installName;
     }
 
     private static IEnumerable<string> ProductNames(InstalledAppEntry app)
@@ -675,8 +737,7 @@ public sealed partial class UninstallResidualService(WindowsUninstallService uni
         other is not null && (DiskCleanupService.IsInOrEqual(path, other) || DiskCleanupService.IsInOrEqual(other, path));
 
     private static bool RegisteredExeIsInside(string? command, string folder) =>
-        command is not null && WindowsUninstallService.SplitExecutable(Environment.ExpandEnvironmentVariables(command)) is { } executable
-        && NormalizePath(executable.Path) is { } path && DiskCleanupService.IsChild(path, folder);
+        GetCommandExecutable(command) is { } path && DiskCleanupService.IsChild(path, folder);
 
     private static bool ReferencesInstallation(object? value, string folder) =>
         value is string text && RegisteredExeIsInside(text, folder);

@@ -8,6 +8,123 @@ namespace Utility.Tests;
 public sealed class UninstallResidualServiceTests
 {
     [Fact]
+    public async Task PartialDesktopUninstallRequiresMissingLaunchersAndUnchangedRegistrationBeforeCleanup()
+    {
+        var name = "FixtureApp" + Guid.NewGuid().ToString("N");
+        var productId = name + "Desktop";
+        var uninstallKey = $@"Software\Microsoft\Windows\CurrentVersion\Uninstall\{productId}";
+        var protocolKey = $@"Software\Classes\{name}-url";
+        var root = Directory.CreateDirectory(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), productId));
+        var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var data = Directory.CreateDirectory(Path.Combine(roaming, name + " Desktop"));
+        var other = Directory.CreateDirectory(Path.Combine(roaming, name + " Desktop Backup"));
+        var profileState = Directory.CreateDirectory(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "state", name));
+        var launcher = Path.Combine(root.FullName, "app.exe");
+        var installer = Path.Combine(root.FullName, "Update.exe");
+        var installerCopy = Path.Combine(root.FullName, "installer-helper.exe");
+        var surviving = Path.Combine(root.FullName, "other-app.exe");
+        var userData = Path.Combine(data.FullName, "settings.json");
+        var cachedState = Path.Combine(profileState.FullName, "state.json");
+        var unrelated = Path.Combine(other.FullName, "keep.txt");
+        var target = new UninstallTarget(new InstalledAppEntry($"CurrentUser:{productId}", name, "Fixture Publisher",
+            "1.0", InstallScope.CurrentUser, null, false)
+        {
+            DesktopRegistration = new DesktopUninstallRegistration(productId, $"\"{installer}\" --uninstall",
+                root.FullName, false, false)
+        }, true);
+        using var user = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64);
+        var service = new UninstallResidualService(new WindowsUninstallService());
+        string? backupFolder = null;
+        try
+        {
+            File.WriteAllText(launcher, "App executable");
+            File.WriteAllText(installer, "Installer executable");
+            File.Copy(installer, installerCopy);
+            File.WriteAllText(userData, "User settings");
+            File.WriteAllText(cachedState, "User state");
+            File.WriteAllText(unrelated, "Another product");
+            using (var key = user.CreateSubKey(uninstallKey))
+            {
+                key.SetValue("DisplayName", name);
+                key.SetValue("DisplayVersion", "1.0");
+                key.SetValue("Publisher", "Fixture Publisher");
+                key.SetValue("UninstallString", target.App.DesktopRegistration!.Command!);
+                key.SetValue("InstallLocation", root.FullName);
+            }
+            using (var key = user.CreateSubKey(protocolKey))
+            {
+                key.SetValue("URL Protocol", "");
+                using var command = key.CreateSubKey(@"shell\open\command");
+                command.SetValue("", $"\"{launcher}\" \"%1\"");
+            }
+
+            var captured = await service.CaptureAsync(target, default);
+            Assert.Equal(launcher, Assert.Single(captured.DesktopEvidence!.Launchers));
+            captured = System.Text.Json.JsonSerializer.Deserialize<UninstallTarget>(
+                System.Text.Json.JsonSerializer.Serialize(captured with { DesktopExitCode = 0 }))!;
+
+            var running = await service.ScanAsync(captured, default);
+            Assert.Equal(ResidualCleanupStatus.ReviewOnly, running.Status);
+            Assert.Contains(running.Items, row => row.Path == launcher);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.RemoveAsync(captured, running.Items));
+
+            File.Delete(launcher);
+            Assert.Equal(ResidualCleanupStatus.ReviewOnly, (await service.ScanAsync(
+                captured with { DesktopExitCode = 3010 }, default)).Status);
+            File.WriteAllText(surviving, "Surviving app executable");
+            Assert.Equal(ResidualCleanupStatus.ReviewOnly, (await service.ScanAsync(captured, default)).Status);
+            File.Delete(surviving);
+
+            var result = await service.ScanAsync(captured, default);
+            Assert.Equal(ResidualCleanupStatus.StaleRegistration, result.Status);
+            Assert.Contains(result.Items, row => string.Equals(row.Registry?.Key, uninstallKey, StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(result.Items, row => row.Registry?.Key == protocolKey);
+            Assert.Contains(result.Items, row => row.Path == installerCopy);
+            Assert.Contains(result.Items, row => row.Path == userData && row.ContainsUserData);
+            Assert.Contains(result.Items, row => row.Path == cachedState && row.ContainsUserData);
+            Assert.DoesNotContain(result.Items, row => row.Path == unrelated);
+
+            using (var key = user.OpenSubKey(uninstallKey, writable: true)!)
+                key.SetValue("UnrelatedChange", "new");
+            Assert.Equal(ResidualCleanupStatus.ReviewOnly, (await service.ScanAsync(captured, default)).Status);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.RemoveAsync(captured, result.Items));
+            using (var key = user.OpenSubKey(uninstallKey, writable: true)!)
+                key.DeleteValue("UnrelatedChange");
+
+            var removed = await service.RemoveAsync(captured, result.Items.Where(row => !row.ContainsUserData).ToArray());
+            backupFolder = removed.BackupFolder;
+            Assert.Empty(removed.Errors);
+            Assert.NotNull(backupFolder);
+            Assert.Null(user.OpenSubKey(uninstallKey));
+            Assert.Null(user.OpenSubKey(protocolKey));
+            Assert.False(Directory.Exists(root.FullName));
+            Assert.True(File.Exists(userData));
+            Assert.True(File.Exists(cachedState));
+            Assert.True(File.Exists(unrelated));
+
+            var remaining = await service.ScanAsync(captured, default);
+            Assert.Equal(ResidualCleanupStatus.Ready, remaining.Status);
+            var dataRemoved = await service.RemoveAsync(captured, remaining.Items.Where(row => row.ContainsUserData).ToArray());
+            Assert.Empty(dataRemoved.Errors);
+            Assert.False(Directory.Exists(data.FullName));
+            Assert.False(Directory.Exists(profileState.FullName));
+            Assert.True(File.Exists(unrelated));
+        }
+        finally
+        {
+            user.DeleteSubKeyTree(uninstallKey, throwOnMissingSubKey: false);
+            user.DeleteSubKeyTree(protocolKey, throwOnMissingSubKey: false);
+            foreach (var directory in new[] { root.FullName, data.FullName, profileState.FullName, other.FullName, backupFolder })
+            {
+                if (Directory.Exists(directory))
+                    Directory.Delete(directory!, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task CapturedClassesFindOrphanedAssociationsAndOnlyEmptyOwnedSandboxes()
     {
         var id = Guid.NewGuid().ToString("D");

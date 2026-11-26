@@ -318,7 +318,10 @@
   <data name="CleanupUninstallPending" xml:space="preserve"><value>Windows has not confirmed removal. Finish the uninstaller, then scan leftovers. {0}</value></data>
   <data name="CleanupFindingResiduals" xml:space="preserve"><value>Scanning files and registry locations for {0}…</value></data>
   <data name="CleanupResidualsFound" xml:space="preserve"><value>{1:N0} possible leftovers for {0}. Review the paths and select the items to clean.</value></data>
-  <data name="CleanupResidualReviewHint" xml:space="preserve"><value>Review the selection. Selected files, including app data, will be permanently deleted. Registry entries are backed up. Empty folders are removed.</value></data>
+  <data name="CleanupResidualReviewHint" xml:space="preserve"><value>Detected leftovers, including settings and sign-in data, are selected by default. Selected files will be deleted permanently. Registry entries will be backed up.</value></data>
+  <data name="CleanupIncludeAppData" xml:space="preserve"><value>Also delete app data</value></data>
+  <data name="CleanupResidualReviewOnly" xml:space="preserve"><value>Removal could not be verified. Results are available for review only.</value></data>
+  <data name="CleanupStaleRegistration" xml:space="preserve"><value>The application executables are gone. The Windows uninstall entry can be backed up and removed.</value></data>
   <data name="CleanupResidualLimit" xml:space="preserve"><value>The result limit was reached. You can scan again after cleaning.</value></data>
   <data name="CleanupBatchDone" xml:space="preserve"><value>Removed {0:N0} items. {1:N0} skipped or failed.</value></data>
   <data name="CleanupBackupLocation" xml:space="preserve"><value>Registry backups are in {0}.</value></data>
@@ -328,6 +331,8 @@
   <data name="CleanupEvidencePackageData" xml:space="preserve"><value>Exact package family</value></data>
   <data name="CleanupEvidenceRegisteredInstallationFolder" xml:space="preserve"><value>Registered install folder</value></data>
   <data name="CleanupEvidenceExactProductFolder" xml:space="preserve"><value>Exact product folder</value></data>
+  <data name="CleanupEvidenceUserProfileData" xml:space="preserve"><value>User data matching the product identity</value></data>
+  <data name="CleanupEvidenceStaleUninstallRegistration" xml:space="preserve"><value>Windows uninstall entry left after removal</value></data>
   <data name="CleanupEvidenceProductUpdateCache" xml:space="preserve"><value>App update cache</value></data>
   <data name="CleanupEvidenceInstallShortcut" xml:space="preserve"><value>Shortcut targets the original installation</value></data>
   <data name="CleanupEvidenceEmptyDirectory" xml:space="preserve"><value>Empty app folder</value></data>

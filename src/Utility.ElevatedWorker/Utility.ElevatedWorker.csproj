@@ -9,7 +9,7 @@
     <StartupHookSupport>false</StartupHookSupport>
     <Product>Utility</Product>
     <Company>Utility</Company>
-    <Version>0.6.6</Version>
+    <Version>0.6.7</Version>
     <ApplicationIcon>..\..\assets\Utility.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>

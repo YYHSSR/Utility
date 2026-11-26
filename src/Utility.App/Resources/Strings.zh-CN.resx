@@ -318,7 +318,10 @@
   <data name="CleanupUninstallPending" xml:space="preserve"><value>Windows 尚未确认卸载。请完成卸载，再检测残留。{0}</value></data>
   <data name="CleanupFindingResiduals" xml:space="preserve"><value>正在检测「{0}」的文件和注册表残留…</value></data>
   <data name="CleanupResidualsFound" xml:space="preserve"><value>为「{0}」找到 {1:N0} 项可能残留。请核对路径并勾选。</value></data>
-  <data name="CleanupResidualReviewHint" xml:space="preserve"><value>请核对勾选项。所选文件（含应用数据）将永久删除。注册表删除前会备份，空文件夹会一并移除。</value></data>
+  <data name="CleanupResidualReviewHint" xml:space="preserve"><value>已确认的残留（含设置、登录状态等应用数据）默认勾选。所选文件将永久删除，注册表删除前会备份。</value></data>
+  <data name="CleanupIncludeAppData" xml:space="preserve"><value>一并删除应用数据</value></data>
+  <data name="CleanupResidualReviewOnly" xml:space="preserve"><value>尚未确认应用已移除，结果仅供查看。</value></data>
+  <data name="CleanupStaleRegistration" xml:space="preserve"><value>应用程序已移除，Windows 卸载登记仍在，可备份后清理。</value></data>
   <data name="CleanupResidualLimit" xml:space="preserve"><value>已达到结果上限，处理后可继续扫描。</value></data>
   <data name="CleanupBatchDone" xml:space="preserve"><value>已处理 {0:N0} 项，跳过或失败 {1:N0} 项。</value></data>
   <data name="CleanupBackupLocation" xml:space="preserve"><value>注册表备份位于 {0}。</value></data>
@@ -328,6 +331,8 @@
   <data name="CleanupEvidencePackageData" xml:space="preserve"><value>应用包专用数据目录</value></data>
   <data name="CleanupEvidenceRegisteredInstallationFolder" xml:space="preserve"><value>已登记的原安装目录</value></data>
   <data name="CleanupEvidenceExactProductFolder" xml:space="preserve"><value>与产品名称一致</value></data>
+  <data name="CleanupEvidenceUserProfileData" xml:space="preserve"><value>与产品标识匹配的用户数据</value></data>
+  <data name="CleanupEvidenceStaleUninstallRegistration" xml:space="preserve"><value>卸载后遗留的 Windows 登记</value></data>
   <data name="CleanupEvidenceProductUpdateCache" xml:space="preserve"><value>产品更新缓存</value></data>
   <data name="CleanupEvidenceInstallShortcut" xml:space="preserve"><value>快捷方式指向原安装目录</value></data>
   <data name="CleanupEvidenceEmptyDirectory" xml:space="preserve"><value>应用空文件夹</value></data>

@@ -239,8 +239,17 @@ internal sealed class CleanupViewModel : ViewModelBase
             RememberUninstall(captured);
             lastResult = await _uninstall.UninstallAsync(captured);
             _checkedAppIds.Remove(AppKey(target));
-            if (lastResult.Removed)
+            if (lastResult.DesktopExitCode is int exitCode)
+            {
+                captured = captured with { DesktopExitCode = exitCode };
+                RememberUninstall(captured);
+            }
+            if (lastResult.Removed || lastResult.DesktopExitCode is not null)
+            {
                 ReviewResiduals(captured, lastResult.RestartRequired);
+                if (!lastResult.Removed && await _uninstall.IsUninstalledAsync(captured, ct))
+                    lastResult = lastResult with { Removed = true };
+            }
         }
 
         if (lastResult is null)
@@ -258,7 +267,7 @@ internal sealed class CleanupViewModel : ViewModelBase
     }
 
     private void ReviewResiduals(UninstallTarget target, bool restartRequired = false) =>
-        new UninstallResidualWindow(_residual, target, restartRequired)
+        new UninstallResidualWindow(_residual, target, restartRequired || target.DesktopExitCode is 1641 or 3010)
         {
             Owner = Application.Current.MainWindow
         }.ShowDialog();
@@ -278,16 +287,18 @@ internal sealed class CleanupViewModel : ViewModelBase
 internal sealed class CleanupItemRow : ViewModelBase
 {
     private bool _selected;
-    private CleanupItemRow(ScannedFile? file, AppResidual? residual, string evidence)
+    private CleanupItemRow(ScannedFile? file, AppResidual? residual, string evidence, bool canSelect = true)
     {
         File = file;
         Residual = residual;
         Evidence = evidence;
+        CanSelect = canSelect;
     }
 
     public ScannedFile? File { get; }
     public AppResidual? Residual { get; }
     public bool Selected { get => _selected; set => SetField(ref _selected, value); }
+    public bool CanSelect { get; }
     public string Path => Residual?.Path ?? File!.Path;
     public string Size => File is null ? "—" : CleanupViewModel.FormatSize(File.Bytes);
     public string Evidence { get; }
@@ -298,8 +309,8 @@ internal sealed class CleanupItemRow : ViewModelBase
     /// <summary>A file row whose third column shows a status note (e.g. 已清理 / 正在使用).</summary>
     public static CleanupItemRow WithNote(ScannedFile file, string note) => new(file, null, note);
 
-    public static CleanupItemRow ForResidual(AppResidual residual) =>
-        new(residual.File, residual, Loc.Get("CleanupEvidence" + residual.Evidence));
+    public static CleanupItemRow ForResidual(AppResidual residual, bool canSelect) =>
+        new(residual.File, residual, Loc.Get("CleanupEvidence" + residual.Evidence), canSelect);
 }
 
 /// <summary>One installed app on the software page; <see cref="Selected"/> is the row's tick box.</summary>

@@ -19,11 +19,18 @@ public sealed record UninstallTarget(
     /// <summary>Runtime, redistributable, codec/extension or other component rather than an app people launch.</summary>
     public bool IsComponent { get; init; }
     public IReadOnlyList<UninstallClassRegistration>? ResidualClasses { get; init; }
+    public DesktopUninstallEvidence? DesktopEvidence { get; init; }
+    public int? DesktopExitCode { get; init; }
 }
+
+public sealed record DesktopUninstallEvidence(string RegistrationFingerprint, string[] Launchers);
 
 public sealed record UninstallInventory(IReadOnlyList<UninstallTarget> Apps, string? StoreError);
 
-public sealed record AppRemovalResult(bool Removed, bool RestartRequired, string? Detail);
+public sealed record AppRemovalResult(bool Removed, bool RestartRequired, string? Detail)
+{
+    public int? DesktopExitCode { get; init; }
+}
 
 public sealed partial class WindowsUninstallService
 {
@@ -114,23 +121,28 @@ public sealed partial class WindowsUninstallService
         using var process = Process.Start(start) ?? throw new IOException("Windows did not start the uninstaller.");
         await process.WaitForExitAsync().ConfigureAwait(false);
 
-        var restart = process.ExitCode is 1641 or 3010;
-        if (!await IsUninstalledAsync(selected, CancellationToken.None).ConfigureAwait(false))
-            return new(false, restart, $"The uninstall entry is still present (exit code {process.ExitCode}).");
-        return new(true, restart, process.ExitCode is 0 or 1641 or 3010 ? null : $"Uninstaller exit code {process.ExitCode}.");
+        var exitCode = process.ExitCode;
+        var restart = exitCode is 1641 or 3010;
+        var removed = await IsUninstalledAsync(selected, CancellationToken.None).ConfigureAwait(false);
+        var detail = !removed ? $"The uninstall entry is still present (exit code {exitCode})."
+            : exitCode is 0 or 1641 or 3010 ? null : $"Uninstaller exit code {exitCode}.";
+        return new(removed, restart, detail) { DesktopExitCode = exitCode };
     }
 
-    public Task<bool> IsUninstalledAsync(UninstallTarget target, CancellationToken ct)
+    public Task<bool> IsUninstalledAsync(UninstallTarget target, CancellationToken ct) =>
+        Task.FromResult(IsUninstalled(target, ct));
+
+    internal bool IsUninstalled(UninstallTarget target, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         if (target.PackageName is not null)
-            return Task.FromResult(IsPackageFamilyAbsent(target));
+            return IsPackageFamilyAbsent(target);
 
         var registration = target.App.DesktopRegistration ?? throw new ArgumentException("Desktop registration is missing.");
         var (hive, view) = UninstallRegistryLocation(target.App.Scope);
         using var baseKey = RegistryKey.OpenBaseKey(hive, view);
         using var entry = baseKey.OpenSubKey($@"{UninstallKey}\{registration.RegistryKeyName}");
-        return Task.FromResult(entry is null);
+        return entry is null;
     }
 
     private static bool IsPackageFamilyAbsent(UninstallTarget target)
