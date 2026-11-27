@@ -12,7 +12,7 @@ C# · WPF · .NET 10 · 无后台服务 · 无内核驱动 · 按需提权</p>
 [![Platform](https://img.shields.io/badge/platform-Windows%2011%20x64-0078D4?style=flat-square&logo=windows11&logoColor=white)](https://github.com/YYHSSR/Utility)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![WPF](https://img.shields.io/badge/UI-WPF-68217A?style=flat-square)](https://github.com/YYHSSR/Utility)
-[![Version](https://img.shields.io/badge/version-0.6.7-2EA043?style=flat-square)](https://github.com/YYHSSR/Utility/releases/latest)
+![Version](https://img.shields.io/badge/version-0.6.8-2EA043?style=flat-square)
 [![License](https://img.shields.io/badge/license-Non--Commercial%20%7C%20ShareAlike-8B5CF6?style=flat-square)](LICENSE)
 
 [功能](#功能) · [快速开始](#快速开始) · [安全设计](#安全设计) · [构建](#构建与测试) · [许可证](#许可证) · [贡献者](CONTRIBUTORS.md)
@@ -60,7 +60,7 @@ Utility 是个人项目，与 Lenovo / 联想、NVIDIA 无隶属或背书关系�
 
 ### 方式一：下载 Windows 安装包
 
-前往 [GitHub Releases](https://github.com/YYHSSR/Utility/releases/latest) 下载 `Utility-0.6.7-win-x64-Setup.exe`。双击安装后，从开始菜单打开 Utility。安装包包含 .NET 10 Windows Desktop Runtime。
+已发布的 Windows 安装包可从 [GitHub Releases](https://github.com/YYHSSR/Utility/releases/latest) 下载。本地构建的安装包位于 `publish\`，文件名为 `Utility-<版本>-win-x64-Setup.exe`。双击安装后，从开始菜单打开 Utility。安装包包含 .NET 10 Windows Desktop Runtime。
 
 程序安装在 `%ProgramFiles%\YYHSSR\Utility`。升级时运行新版安装包，已有配置会继续从 `%LOCALAPPDATA%\Utility` 读取。下载页提供安装包的 SHA-256 校验文件。
 
@@ -139,7 +139,7 @@ flowchart TB
 
     App --> Core
     App --> Platform
-    Core --> Platform
+    Platform --> Core
     App -. UAC .-> Worker
     Platform --> HW
     Worker --> HW

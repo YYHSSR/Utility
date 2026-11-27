@@ -20,6 +20,7 @@ public sealed record UninstallTarget(
     public bool IsComponent { get; init; }
     public IReadOnlyList<UninstallClassRegistration>? ResidualClasses { get; init; }
     public DesktopUninstallEvidence? DesktopEvidence { get; init; }
+    public string? CapturedInstallLocation { get; init; }
     public int? DesktopExitCode { get; init; }
 }
 

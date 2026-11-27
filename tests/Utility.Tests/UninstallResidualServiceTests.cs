@@ -282,6 +282,14 @@ public sealed class UninstallResidualServiceTests
             Assert.Contains(result.Items, row => row.Registry is { Value: var value } && value == name);
             Assert.Contains(result.Items, row => row.Registry?.Key == @"Software\" + id);
 
+            var captured = await service.CaptureAsync(target, default);
+            Assert.Equal(root.FullName, captured.CapturedInstallLocation);
+            captured = System.Text.Json.JsonSerializer.Deserialize<UninstallTarget>(
+                System.Text.Json.JsonSerializer.Serialize(captured))!;
+            installer.DeleteValue("InstallLocation");
+            Assert.Contains((await service.ScanAsync(captured, default)).Items, row => row.EmptyDirectory == empty.FullName);
+            installer.SetValue("InstallLocation", root.FullName);
+
             var folder = Assert.Single(result.Items, row => row.EmptyDirectory == empty.FullName);
             var file = Assert.Single(result.Items, row => row.File?.Path.Equals(deletedFile, StringComparison.OrdinalIgnoreCase) == true);
             var removed = await service.RemoveAsync(target, [folder, file]);
@@ -310,6 +318,43 @@ public sealed class UninstallResidualServiceTests
             if (parent?.Exists == true) parent.Delete();
             root.Refresh();
             if (root.Exists) root.Delete();
+        }
+    }
+
+    [Fact]
+    public async Task ApkReceiptFindsShortInstallPathAndEmptyParentWithoutInstallerRegistration()
+    {
+        const string id = "c99f334e-0eed-51c5-9914-8835e31e2d12";
+        var fixture = Directory.CreateTempSubdirectory("Utility-ApkResidual-");
+        try
+        {
+            var parent = fixture.CreateSubdirectory("APK");
+            var install = parent.CreateSubdirectory("APK");
+            var launcher = Path.Combine(install.FullName, "APK.exe");
+            File.WriteAllText(launcher, "Simulated installed file");
+            var target = new UninstallTarget(new InstalledAppEntry($"CurrentUser:{id}", "APK", "RoutineMiku",
+                "0.6.10", InstallScope.CurrentUser, null, false)
+            {
+                DesktopRegistration = new DesktopUninstallRegistration(id,
+                    $"\"{Path.Combine(install.FullName, "Uninstall APK.exe")}\" /currentuser",
+                    null, false, false, $"\"{launcher}\",0")
+            }, true) { DesktopExitCode = 0 };
+            var service = new UninstallResidualService(new WindowsUninstallService());
+
+            Assert.Contains((await service.ScanAsync(target, default)).Items, row => row.Path == launcher);
+            var unrelated = target with { App = target.App with { Publisher = "Different publisher" } };
+            Assert.DoesNotContain((await service.ScanAsync(unrelated, default)).Items, row => row.Path == launcher);
+
+            File.Delete(launcher);
+            install.Delete();
+            Assert.Contains((await service.ScanAsync(target, default)).Items, row => row.EmptyDirectory == parent.FullName);
+
+            File.WriteAllText(Path.Combine(parent.FullName, "keep.txt"), "A nonempty parent is excluded.");
+            Assert.DoesNotContain((await service.ScanAsync(target, default)).Items, row => row.EmptyDirectory == parent.FullName);
+        }
+        finally
+        {
+            fixture.Delete(recursive: true);
         }
     }
 }

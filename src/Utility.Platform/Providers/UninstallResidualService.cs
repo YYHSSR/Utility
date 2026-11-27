@@ -101,8 +101,9 @@ public sealed partial class UninstallResidualService(WindowsUninstallService uni
                 var footprints = GetFootprints(target);
                 if (footprints.InstallPath is not { } installPath)
                     return target;
-                var classes = ReadOwnedClasses(target, installPath, ct).Take(128).ToArray();
-                captured = target with { ResidualClasses = classes };
+                captured = target with { CapturedInstallLocation = installPath };
+                var classes = ReadOwnedClasses(captured, installPath, ct).Take(128).ToArray();
+                captured = captured with { ResidualClasses = classes };
                 return captured with
                 {
                     DesktopEvidence = CaptureDesktopEvidence(captured, installPath, footprints.ProductNames, ct)
@@ -203,10 +204,13 @@ public sealed partial class UninstallResidualService(WindowsUninstallService uni
                         string.Equals(NormalizePath(registeredPath), installPath, StringComparison.OrdinalIgnoreCase))
                         AddKey(installerKey, "InstallReferenceRegistry");
                 }
-                ScanValueReferences(@"Software\Microsoft\Windows\CurrentVersion\Run");
+                ScanValueReferences(RunKey);
                 ScanValueReferences(@"Software\Microsoft\Windows\CurrentVersion\RunOnce");
                 ScanCommandChildren(@"Software\Microsoft\Windows\CurrentVersion\App Paths", child => child, "");
                 ScanCommandChildren(@"Software\Classes\Applications", child => $@"{child}\shell\open\command", "");
+                if (hive == RegistryHive.CurrentUser && footprints.OwnsApkStartIdentity &&
+                    HasApkStartApprovalResidual(baseKey, installPath))
+                    AddReference(StartupApprovedRunKey, ApkDisplayName);
             }
 
             void AddKey(string path, string reason)
@@ -568,33 +572,35 @@ public sealed partial class UninstallResidualService(WindowsUninstallService uni
     private sealed record ResidualFolder(string Path, string Evidence, bool ContainsUserData = false);
 
     private static (IReadOnlyList<ResidualFolder> Folders, string[] ProductNames,
-        string? Publisher, string? InstallPath) GetFootprints(UninstallTarget target)
+        string? Publisher, string? InstallPath, bool OwnsApkStartIdentity) GetFootprints(UninstallTarget target)
     {
         var folders = new List<ResidualFolder>();
         var addedFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (target.PackageName is not null && SafeSegment(target.App.PackageFamilyName) is { } family)
         {
             folders.Add(new(Path.Combine(Local, "Packages", family), "PackageData", ContainsUserData: true));
-            return (folders, new[] { family, target.PackageName }.Where(name => SafeSegment(name) is not null).ToArray(), null, null);
+            return (folders, new[] { family, target.PackageName }.Where(name => SafeSegment(name) is not null).ToArray(), null, null, false);
         }
 
         var apps = WindowsSoftwareProvider.ReadInstalledApps(includeStoreApps: false)
             .Where(app => !app.StableId.Equals(target.App.StableId, StringComparison.OrdinalIgnoreCase)).ToArray();
         var otherNames = apps.SelectMany(AppNamesInUse).Select(Normalize)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var ownsApkStartIdentity = IsApkStart(target.App) &&
+            !otherNames.Contains(Normalize(ApkDataName)) &&
+            !apps.Any(app => app.DisplayName.Equals(ApkDisplayName, StringComparison.OrdinalIgnoreCase));
         var publisher = SafeSegment(target.App.Publisher);
         var names = ProductNames(target.App).Where(name => !otherNames.Contains(Normalize(name)))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var registration = target.App.DesktopRegistration;
 
         string? installPath = null;
-        var location = NormalizePath(registration?.InstallLocation);
-        var uninstaller = GetCommandExecutable(registration?.Command);
-        if (location is null && uninstaller is not null &&
-            Path.GetFileName(uninstaller).StartsWith("unins", StringComparison.OrdinalIgnoreCase))
-            location = NormalizePath(Path.GetDirectoryName(uninstaller));
-
-        if (location is not null && SafeSegment(Path.GetFileName(location)) is { } installName && !IsShared(location) &&
+        var location = GetDesktopInstallLocation(target, ownsApkStartIdentity);
+        var installName = Path.GetFileName(location);
+        var knownApkInstallName = ownsApkStartIdentity &&
+            string.Equals(installName, ApkDisplayName, StringComparison.OrdinalIgnoreCase);
+        if (location is not null && installName is not null &&
+            (knownApkInstallName || SafeSegment(installName) is not null) && !IsShared(location) &&
             (ProgramRoots.Any(root => DiskCleanupService.IsChild(location, root))
                 ? names.Any(name => Normalize(name) == Normalize(installName)) ||
                     RegisteredExeIsInside(registration?.Command, location)
@@ -603,8 +609,20 @@ public sealed partial class UninstallResidualService(WindowsUninstallService uni
             installPath = location;
             addedFolders.Add(location);
             folders.Add(new(location, "RegisteredInstallationFolder"));
-            if (!otherNames.Contains(Normalize(installName)))
+            if (SafeSegment(installName) is not null && !otherNames.Contains(Normalize(installName)))
                 names.Add(installName);
+
+            if (knownApkInstallName && Path.GetDirectoryName(location) is { } parent &&
+                string.Equals(Path.GetFileName(parent), ApkDisplayName, StringComparison.OrdinalIgnoreCase) &&
+                IsEmptyDirectory(parent) && !IsShared(parent))
+                folders.Add(new(parent, "RegisteredInstallationFolder"));
+        }
+
+        if (ownsApkStartIdentity)
+        {
+            // The Windows display name changed to APK while the Electron data name stayed apkstart.
+            AddFolder(Path.Combine(Roaming, ApkDataName), "ExactProductFolder", containsUserData: true);
+            AddFolder(Path.Combine(Local, ApkDataName + "-updater"), "ProductUpdateCache", containsUserData: false);
         }
 
         var normalizedNames = names.Select(Normalize).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -627,7 +645,7 @@ public sealed partial class UninstallResidualService(WindowsUninstallService uni
             if (temp is not null)
                 AddFolder(Path.Combine(temp, name + "-bundle"), "ProductUpdateCache", containsUserData: false);
         }
-        return (folders, names.ToArray(), publisher, installPath);
+        return (folders, names.ToArray(), publisher, installPath, ownsApkStartIdentity);
 
         bool IsCustomInstallation(string path, string name)
         {
@@ -636,7 +654,7 @@ public sealed partial class UninstallResidualService(WindowsUninstallService uni
             var userProfiles = Path.GetDirectoryName(Profile);
             var normalizedName = Normalize(name);
             // Per-user installers can use the registered product ID as the direct LocalAppData folder name.
-            var matchesIdentity = names.Any(product => Normalize(product) == normalizedName) ||
+            var matchesIdentity = knownApkInstallName || names.Any(product => Normalize(product) == normalizedName) ||
                 (target.App.Scope == InstallScope.CurrentUser &&
                  string.Equals(Path.GetDirectoryName(path), Local, StringComparison.OrdinalIgnoreCase) &&
                  SafeSegment(registration?.RegistryKeyName) is { } keyName && Normalize(keyName) == normalizedName &&
@@ -679,6 +697,8 @@ public sealed partial class UninstallResidualService(WindowsUninstallService uni
     {
         foreach (var name in ProductNames(app))
             yield return name;
+        if (IsApkStart(app))
+            yield return ApkDataName;
         yield return app.Publisher;
 
         if (app.DesktopRegistration is { } registration && NormalizePath(registration.InstallLocation) is { } root &&

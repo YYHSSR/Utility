@@ -13,11 +13,7 @@ public sealed partial class UninstallResidualService
 
         var installer = GetCommandExecutable(target.App.DesktopRegistration!.Command);
         var launchers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var icon = target.App.DesktopRegistration.DisplayIcon;
-        var separator = icon?.LastIndexOf(',') ?? -1;
-        if (separator >= 0 && int.TryParse(icon.AsSpan(separator + 1), out _))
-            icon = icon![..separator];
-        AddLauncher(NormalizePath(icon));
+        AddLauncher(GetDisplayIconExecutable(target.App.DesktopRegistration.DisplayIcon));
 
         foreach (var item in target.ResidualClasses ?? [])
         {
